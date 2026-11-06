@@ -3,13 +3,13 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Create an isolated wallet or exercise its existing Preview session
+        description: Create, resume setup, or exercise an isolated Preview wallet
         type: choice
-        options: [bootstrap, exercise]
+        options: [bootstrap, resume-bootstrap, exercise]
         required: true
         default: bootstrap
       state_run_id:
-        description: Exact earlier run containing the encrypted test profile (required for exercise)
+        description: Exact earlier run containing the encrypted test profile (required when resuming)
         type: string
         default: ''
 permissions:
@@ -60,7 +60,7 @@ jobs:
           node scripts/lace-ci/verify-extension.mjs --out "$RUNNER_TEMP/lace-ci/package"
           cp "$RUNNER_TEMP/lace-ci/package/verification.json" "$RUNNER_TEMP/lace-ci/public/lace-package.json"
       - name: Download exact prior encrypted state
-        if: inputs.mode == 'exercise'
+        if: inputs.mode != 'bootstrap'
         uses: actions/download-artifact@v4
         with:
           name: lace-ci-state
@@ -68,7 +68,7 @@ jobs:
           run-id: ${{ inputs.state_run_id }}
           github-token: ${{ github.token }}
       - name: Restore authenticated test profile
-        if: inputs.mode == 'exercise'
+        if: inputs.mode != 'bootstrap'
         env:
           LACE_CI_STATE_KEY: ${{ secrets.LACE_CI_STATE_KEY }}
         run: node scripts/lace-ci/state.mjs restore --state-dir "$RUNNER_TEMP/lace-ci/state" --archive "$RUNNER_TEMP/lace-ci/incoming/profile.enc" --wallet-version 2.5.1

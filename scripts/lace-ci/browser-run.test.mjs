@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { APP_URL, validateEnvironment, parseArgs, atomicInteger, validatePrivateMetadata, publicStepEvidence } from './browser-run.mjs';
+import { APP_URL, validateEnvironment, parseArgs, atomicInteger, validatePrivateMetadata, publicStepEvidence, bootstrapStorageDecision } from './browser-run.mjs';
 
 const env = { CI:'true', GITHUB_ACTIONS:'true', RUNNER_OS:'Linux', GITHUB_REPOSITORY:'IBKR-BouncyBot/Midnight-Agent-AI-Wallet', GITHUB_RUN_ID:'123', RUNNER_TEMP:'/tmp/runner' };
 test('browser execution requires the isolated GitHub repository runner', () => {
@@ -12,6 +12,7 @@ test('browser execution requires the isolated GitHub repository runner', () => {
 test('CLI allowlists exact public app URL and known arguments', () => {
   const args = ['--mode','bootstrap','--extension-dir','e','--state-dir','s','--evidence-dir','p'];
   assert.equal(parseArgs(args).mode, 'bootstrap');
+  assert.equal(parseArgs(args.map(value=>value==='bootstrap'?'resume-bootstrap':value)).mode, 'resume-bootstrap');
   for (const url of [APP_URL+'?x=1', APP_URL+'#secret', APP_URL.replace('https:', 'http:'), 'https://example.com'])
     assert.throws(() => parseArgs([...args, '--app-url', url]));
   assert.throws(() => parseArgs([...args, '--mode','exercise']));
@@ -37,4 +38,20 @@ test('public evidence projection excludes arbitrary private metadata', () => {
   assert.deepEqual(result, { status:'passed', sameAccountAndVault:true, backupBytes:400 });
   assert.throws(() => publicStepEvidence({status:'finalized',transactionIds:['not-a-tx']}));
   assert.throws(() => publicStepEvidence({status:'finalized',receipt:{status:'finalized',settlementVerified:false}}));
+});
+test('bootstrap resume permits only a saved transaction-free incomplete profile', () => {
+  const state = { schema:'lace-ci-private-session-v1', network:'preview', walletVersion:'2.5.1', appUrl:APP_URL,
+    walletPassword:'a'.repeat(32), appPassword:'b'.repeat(32), completedSteps:[], stepEvidence:{}, pendingAction:null, bootstrapComplete:false };
+  assert.equal(validatePrivateMetadata(state, 'resume-bootstrap'), state);
+  for (const patch of [{pendingAction:{step:'first-payment'}},{bootstrapComplete:true},{completedSteps:['generate-dust']},
+    {stepEvidence:{'first-payment':{status:'finalized'}}},{walletVersion:'2.5.0'}])
+    assert.throws(()=>validatePrivateMetadata({...state,...patch},'resume-bootstrap'));
+});
+test('resume never replaces an existing or unauthenticated app session', () => {
+  assert.equal(bootstrapStorageDecision({mode:'resume-bootstrap',openResult:'opened'}),'open');
+  assert.equal(bootstrapStorageDecision({mode:'resume-bootstrap',openResult:'missing'}),'create');
+  for (const openResult of ['wrong-password','failed','collision',undefined])
+    assert.throws(()=>bootstrapStorageDecision({mode:'resume-bootstrap',openResult}));
+  assert.throws(()=>bootstrapStorageDecision({mode:'resume-bootstrap',openResult:'missing',appSessionCreated:true}));
+  assert.throws(()=>bootstrapStorageDecision({mode:'exercise',openResult:'missing'}));
 });

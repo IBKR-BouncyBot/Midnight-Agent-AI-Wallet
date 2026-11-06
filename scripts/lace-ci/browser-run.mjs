@@ -34,7 +34,7 @@ export function parseArgs(args) {
       && value && !value.startsWith('--') && !Object.hasOwn(result, key.slice(2)), 'INVALID_ARGUMENTS');
     result[key.slice(2)] = value;
   }
-  requireThat(['bootstrap', 'exercise'].includes(result.mode) && result['extension-dir'] && result['state-dir'] && result['evidence-dir'], 'INVALID_ARGUMENTS');
+  requireThat(['bootstrap', 'resume-bootstrap', 'exercise'].includes(result.mode) && result['extension-dir'] && result['state-dir'] && result['evidence-dir'], 'INVALID_ARGUMENTS');
   requireThat((result['app-url'] ?? APP_URL) === APP_URL, 'APP_URL_NOT_ALLOWLISTED');
   return result;
 }
@@ -69,15 +69,27 @@ export function publicStepEvidence(value) {
   }
   return result;
 }
-export function validatePrivateMetadata(value) {
+export function validatePrivateMetadata(value, mode = 'exercise') {
+  requireThat(['resume-bootstrap', 'exercise'].includes(mode), 'INVALID_RESTORE_MODE');
   requireThat(value?.schema === SCHEMA && value.network === 'preview' && value.walletVersion === VERSION
     && value.appUrl === APP_URL && typeof value.walletPassword === 'string' && value.walletPassword.length >= 24
     && typeof value.appPassword === 'string' && value.appPassword.length >= 24
     && Array.isArray(value.completedSteps) && value.completedSteps.every(step => typeof step === 'string')
     && value.stepEvidence && typeof value.stepEvidence === 'object', 'PRIVATE_STATE_INVALID');
   requireThat(value.pendingAction === null, 'RESTORED_ACTION_UNRESOLVED');
-  requireThat(value.bootstrapComplete === true && /^mn_addr_preview1[0-9a-z]+$/.test(value.accountId ?? ''), 'BOOTSTRAP_INCOMPLETE');
+  if (mode === 'exercise') requireThat(value.bootstrapComplete === true && /^mn_addr_preview1[0-9a-z]+$/.test(value.accountId ?? ''), 'BOOTSTRAP_INCOMPLETE');
+  else {
+    requireThat(value.bootstrapComplete === false && value.completedSteps.length === 0 && Object.keys(value.stepEvidence).length === 0,
+      'RESUME_BOOTSTRAP_SETUP_ONLY');
+    requireThat(value.accountId === undefined || /^mn_addr_preview1[0-9a-z]+$/.test(value.accountId), 'PRIVATE_STATE_INVALID');
+  }
   return value;
+}
+export function bootstrapStorageDecision({ mode, openResult, appSessionCreated = false }) {
+  requireThat(['resume-bootstrap', 'exercise'].includes(mode), 'INVALID_RESTORE_MODE');
+  if (openResult === 'opened') return 'open';
+  if (mode === 'resume-bootstrap' && openResult === 'missing' && !appSessionCreated) return 'create';
+  throw new Stop('SAVED_APP_SESSION_REQUIRED');
 }
 async function exists(file) { try { await lstat(file); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; } }
 async function containedPath(root, requested, existing = false) {
@@ -115,7 +127,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
   validateEnvironment(env); // Before imports, profile access, or any browser launch.
   requireThat(process.platform === 'linux', 'LINUX_RUNNER_REQUIRED');
   const options = parseArgs(args), tempRoot = await realpath(env.RUNNER_TEMP);
-  const stateDir = await containedPath(tempRoot, options['state-dir'], options.mode === 'exercise');
+  const stateDir = await containedPath(tempRoot, options['state-dir'], options.mode !== 'bootstrap');
   const evidenceDir = await containedPath(tempRoot, options['evidence-dir']);
   const extensionDir = await containedPath(tempRoot, options['extension-dir'], true);
   requireThat(![stateDir, extensionDir].some(dir => evidenceDir === dir || evidenceDir.startsWith(dir + path.sep) || dir.startsWith(evidenceDir + path.sep))
@@ -134,12 +146,13 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     metadata = { schema: SCHEMA, network: 'preview', walletVersion: VERSION, appUrl: APP_URL,
       walletPassword: 'CiWallet-' + randomBytes(32).toString('base64url') + '!9a',
       appPassword: 'CiVault-' + randomBytes(32).toString('base64url') + '!9a',
-      createdAt: now(), bootstrapComplete: false, pendingAction: null, completedSteps: [], stepEvidence: {} };
+      createdAt: now(), bootstrapComplete: false, bootstrapProgress: {}, pendingAction: null, completedSteps: [], stepEvidence: {} };
     await atomicJson(privateFile, metadata);
   } else {
-    metadata = validatePrivateMetadata(JSON.parse(await readFile(privateFile, 'utf8')));
+    metadata = validatePrivateMetadata(JSON.parse(await readFile(privateFile, 'utf8')), options.mode);
     requireThat((await lstat(path.join(stateDir, 'profile'))).isDirectory(), 'RESTORED_PROFILE_REQUIRED');
   }
+  metadata.bootstrapProgress ??= {};
   await mkdir(evidenceDir, { recursive: true, mode: 0o700 });
   const reportFile = path.join(evidenceDir, 'browser-run.json');
   requireThat(!await exists(reportFile), 'FRESH_EVIDENCE_REQUIRED');
@@ -147,6 +160,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     network: 'preview', appUrl: APP_URL, walletVersion: VERSION, extensionId: EXTENSION_ID,
     extensionCrxSha256: acquisition.crxSha256, runnerSha256: digest(await readFile(new URL(import.meta.url))),
     status: 'running', stage: 'starting', operations: [], browserClosed: false, transactionsRetried: 0,
+    restoredExistingWallet: options.mode !== 'bootstrap', walletCreationRequested: false,
     runner: { sourceCommit: /^[a-f0-9]{40}$/.test(env.GITHUB_SHA ?? '') ? env.GITHUB_SHA : null,
       runId: env.GITHUB_RUN_ID, node: process.version, platform: process.platform, architecture: process.arch,
       logicalCpuCount: cpus().length, cpuModel: cpus()[0]?.model, memoryBytes: totalmem() },
@@ -161,6 +175,38 @@ export async function main(args = process.argv.slice(2), env = process.env) {
   const approved = new WeakSet();
   let approvals = 0;
   const origin = new URL(APP_URL).origin;
+  async function uiStep(name, task) {
+    await stage(name);
+    try { return await task(); }
+    catch (error) { if (error instanceof Stop) throw error; throw new Stop('UI_' + name.replaceAll('-', '_').toUpperCase() + '_FAILED'); }
+  }
+  async function settingsDiagnostics() {
+    if (!wallet || wallet.isClosed()) return;
+    // Counts/visibility of fixed public settings controls only. No arbitrary
+    // DOM text, inputs, screenshots, or wallet/profile data are inspected.
+    const selectors = ['settings-tab-btn', 'option-list-item-network', 'network-selection-sheet',
+      'radio-button-testnet', 'radio-button-midnight-preview', 'network-selection-sheet-confirm-button',
+      'option-list-item-midnight', 'midnight-settings-sheet-header', 'proof-server-in-process-radio',
+      'proof-server-in-process-radio-checkmark', 'save-configuration-button'];
+    const controls = {};
+    for (const id of selectors) {
+      const locator = wallet.getByTestId(id); const count = await locator.count().catch(() => 0);
+      controls[id] = { count, visible: count === 1 && await visible(locator) };
+    }
+    report.settingsControls = controls;
+  }
+  async function findSettingsItem(id) {
+    const item = wallet.getByTestId(id);
+    // Lace's GenericFlashList virtualizes offscreen cards. Scroll the real
+    // settings list, not injected state, until its known card is mounted.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      if (await item.count() === 1) { await item.scrollIntoViewIfNeeded(); return item; }
+      const list = wallet.getByTestId('option-list-item-network');
+      if (await visible(list)) await list.hover(); else await wallet.mouse.move(700, 650);
+      await wallet.mouse.wheel(0, id === 'option-list-item-network' ? -450 : 450); await delay(300);
+    }
+    throw new Stop('SETTINGS_ITEM_NOT_RENDERED');
+  }
   async function auth(page) {
     const input = page.getByTestId('authentication-prompt-input-value');
     await input.waitFor({ state: 'visible', timeout: 60_000 });
@@ -264,14 +310,14 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     metadata.stepEvidence[name] = result; metadata.completedSteps.push(name); metadata.pendingAction = null;
     await persist(); report.operations.push({ step: name, ...publicStepEvidence(result) }); await save();
   }
-  async function connectApp(mode) {
+  async function connectApp(mode, { allowMissing = false } = {}) {
     await app.locator('[data-screen="connect"]').click();
     await app.locator('#find-wallets').click();
     await poll(async () => (await app.locator('#wallet-select option').allTextContents()).some(item => item === 'Lace'), 60_000);
     await app.locator('#in-process').check(); await app.locator('#storage-mode').selectOption(mode);
     await app.locator('#storage-password').fill(metadata.appPassword); await app.locator('#connect').click();
     let authorized = false;
-    await poll(async () => {
+    const outcome = await poll(async () => {
       const pages = context.pages().filter(page => page.url().startsWith(`chrome-extension://${EXTENSION_ID}/`) && page.url().includes('#/midnight-authorize-dapp'));
       requireThat(pages.length <= 1, 'MULTIPLE_CONNECTION_WINDOWS');
       if (pages[0] && !authorized && await visible(pages[0].getByTestId('dapp-connector-primary-button'))) {
@@ -280,14 +326,21 @@ export async function main(args = process.argv.slice(2), env = process.env) {
         authorized = true; await page.getByTestId('dapp-connector-primary-button').click();
       }
       const label = await app.locator('#connection-label').textContent();
-      if (label === 'Connected on this device') return true;
-      requireThat(!await app.locator('#status').evaluate(el => el.classList.contains('error')), 'APP_CONNECTION_FAILED');
+      if (label === 'Connected on this device') return 'opened';
+      if (await app.locator('#status').evaluate(el => el.classList.contains('error'))) {
+        const exactMissing = await app.locator('#status').textContent() === 'No saved vault was found for this account. Create a new session or restore your encrypted backup.';
+        if (mode === 'open' && allowMissing && exactMissing) return 'missing';
+        throw new Stop('APP_CONNECTION_FAILED');
+      }
       return false;
     }, 180_000);
+    if (outcome === 'missing') return outcome;
     const publicInfo = await publicWallet();
     requireThat(await app.locator('#funding-address').inputValue() === publicInfo.unshieldedAddress, 'APP_ACCOUNT_BINDING_FAILED');
     metadata.accountId = publicInfo.unshieldedAddress;
     metadata.publicAddresses = { unshieldedAddress: publicInfo.unshieldedAddress, dustAddress: publicInfo.dustAddress }; await persist();
+    metadata.bootstrapProgress.appSessionCreated = true; await persist();
+    return 'opened';
   }
   async function prepareRecipient() {
     await app.locator('[data-screen="vault"]').click();
@@ -300,26 +353,49 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     requireThat((await uiPublic()).phase !== 'unresolved', 'APP_RESTORED_OUTCOME_UNRESOLVED');
   }
   async function selectWasm() {
-    await wallet.getByTestId('settings-tab-btn').click();
-    await wallet.getByTestId('option-list-item-network').click();
-    await wallet.getByTestId('radio-button-testnet').click();
-    await wallet.getByTestId('radio-button-midnight-preview').click();
-    await wallet.getByTestId('network-selection-sheet-confirm-button').click();
-    await wallet.getByTestId('network-selection-sheet').waitFor({ state: 'hidden' });
-    await wallet.getByTestId('option-list-item-midnight').click();
-    const radio = wallet.getByTestId('proof-server-in-process-radio'); await radio.click();
-    requireThat(await visible(wallet.getByText('Run in this app (WASM)', { exact: true })), 'WASM_SETTING_LABEL_MISSING');
-    await wallet.getByTestId('save-configuration-button').click();
-    // In-process has no delegated-provider disclosure. If one appears, stop.
-    await wallet.getByTestId('midnight-settings-sheet-header').waitFor({ state: 'hidden', timeout: 30_000 });
-    await wallet.getByTestId('option-list-item-midnight').click();
+    // Restored navigation may retain a settings sheet. Only known, harmless
+    // settings controls are used to close it; never approve a transaction.
+    if (await visible(wallet.getByTestId('network-selection-sheet-cancel-button')))
+      await uiStep('dismiss-restored-network-sheet', () => wallet.getByTestId('network-selection-sheet-cancel-button').click());
+    if (await visible(wallet.getByTestId('midnight-settings-sheet-header'))) {
+      await uiStep('normalize-restored-wasm-setting', async () => {
+        await wallet.getByTestId('proof-server-in-process-radio').click();
+        await wallet.getByTestId('save-configuration-button').click();
+        await wallet.getByTestId('midnight-settings-sheet-header').waitFor({ state:'hidden' });
+      });
+    }
+    await uiStep('open-wallet-settings', () => wallet.getByTestId('settings-tab-btn').click());
+    await uiStep('open-network-sheet', async () => (await findSettingsItem('option-list-item-network')).click());
+    await uiStep('select-testnet-network', () => wallet.getByTestId('radio-button-testnet').click());
+    await uiStep('select-midnight-preview', () => wallet.getByTestId('radio-button-midnight-preview').click());
+    await uiStep('save-preview-network', async () => {
+      await wallet.getByTestId('network-selection-sheet-confirm-button').click();
+      await wallet.getByTestId('network-selection-sheet').waitFor({ state: 'hidden' });
+    });
+    metadata.bootstrapProgress.previewSelected = true; await persist();
+    await uiStep('open-midnight-proving-settings', async () => (await findSettingsItem('option-list-item-midnight')).click());
+    const radio = wallet.getByTestId('proof-server-in-process-radio');
+    await uiStep('select-in-app-wasm', async () => {
+      await radio.click();
+      requireThat(await visible(wallet.getByText('Run in this app (WASM)', { exact: true })), 'WASM_SETTING_LABEL_MISSING');
+    });
+    await uiStep('save-in-app-wasm', async () => {
+      await wallet.getByTestId('save-configuration-button').click();
+      // In-process has no delegated-provider disclosure. If one appears, stop.
+      await wallet.getByTestId('midnight-settings-sheet-header').waitFor({ state: 'hidden', timeout: 30_000 });
+    });
+    await uiStep('reopen-wasm-settings', async () => (await findSettingsItem('option-list-item-midnight')).click());
+    await stage('verify-persisted-wasm-selection');
     const checked = await radio.evaluate(el => el.getAttribute('aria-selected') === 'true' || el.getAttribute('aria-checked') === 'true'
       || el.querySelector('[aria-checked="true"]') !== null || el.querySelector('input:checked') !== null)
       || await visible(wallet.getByTestId('proof-server-in-process-radio-checkmark'));
     requireThat(checked, 'WASM_SELECTION_NOT_PERSISTED');
     report.provingSetting = { label: 'Run in this app (WASM)', selectedInRealUi: true, persistedOnReopen: true };
-    await wallet.getByTestId('save-configuration-button').click();
-    await wallet.getByTestId('midnight-settings-sheet-header').waitFor({ state: 'hidden' }); await save();
+    metadata.bootstrapProgress.wasmSelected = true; await persist();
+    await uiStep('close-verified-wasm-settings', async () => {
+      await wallet.getByTestId('save-configuration-button').click();
+      await wallet.getByTestId('midnight-settings-sheet-header').waitFor({ state: 'hidden' });
+    }); await save();
   }
   try {
     const { chromium } = await import('playwright');
@@ -331,6 +407,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     wallet = await context.newPage(); await wallet.goto(`chrome-extension://${EXTENSION_ID}/expo/index.html`);
     if (options.mode === 'bootstrap') {
       await stage('create-fresh-disposable-wallet');
+      report.walletCreationRequested = true; await save();
       await wallet.getByTestId('onboarding-start-create-wallet-button').waitFor({ timeout: 90_000 });
       await wallet.getByTestId('onboarding-start-create-wallet-button').click();
       await wallet.getByTestId('new-password-input-value').fill(metadata.walletPassword);
@@ -348,13 +425,24 @@ export async function main(args = process.argv.slice(2), env = process.env) {
       if (await visible(wallet.getByTestId('authentication-prompt-input-value'))) await auth(wallet);
     }
     await wallet.getByTestId('settings-tab-btn').waitFor({ timeout: 180_000 });
+    metadata.bootstrapProgress.walletCreated = true; await persist();
     await stage('select-preview-and-real-wasm'); await selectWasm();
     app = await context.newPage(); await app.goto(APP_URL, { waitUntil: 'domcontentloaded' });
     requireThat(app.url() === APP_URL, 'APP_REDIRECT_REJECTED');
     await captureHostedBuild();
-    await stage('connect-genuine-lace-and-encrypted-app'); await connectApp(options.mode === 'bootstrap' ? 'create' : 'open');
+    await stage('connect-genuine-lace-and-encrypted-app');
+    if (options.mode === 'resume-bootstrap') {
+      const result = await connectApp('open', { allowMissing: true });
+      const decision = bootstrapStorageDecision({ mode: options.mode, openResult: result, appSessionCreated: metadata.bootstrapProgress.appSessionCreated === true });
+      if (decision === 'create') {
+        // Only a real app's exact missing-store result permits first creation.
+        // Wrong password, incompatible identity, collision and other failures stop.
+        await stage('create-missing-app-session-for-existing-wallet'); await connectApp('create');
+      }
+    } else await connectApp(options.mode === 'bootstrap' ? 'create' : 'open');
     await stage('prepare-targeted-receipt-verifier'); await prepareRecipient();
-    if (options.mode === 'bootstrap') {
+    metadata.bootstrapProgress.recipientPrepared = true; await persist();
+    if (options.mode !== 'exercise') {
       requireThat(transactionIds(await uiPublic()).length === 0, 'BOOTSTRAP_MUST_NOT_TRANSACT');
       metadata.bootstrapComplete = true; await persist();
       report.status = 'funding-required'; report.nextAction = 'Fund the recorded disposable Preview address; exercise restores this exact encrypted profile.';
@@ -364,6 +452,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
   } catch (error) {
     // Never forward Playwright exceptions: they may include input values or DOM.
     report.status = 'stopped'; report.stopCode = error instanceof Stop ? error.code : 'BROWSER_STEP_FAILED';
+    await settingsDiagnostics().catch(() => {});
     if (report.stopCode === 'PREVIEW_NIGHT_FUNDING_REQUIRED') report.nextAction = 'Fund the recorded disposable Preview NIGHT address, then restore this exact encrypted profile. No designation or app transaction was sent.';
     report.uncertainAction = metadata.pendingAction?.step ?? null; process.exitCode = 1;
   } finally {
