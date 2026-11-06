@@ -1,8 +1,47 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { APP_URL, validateEnvironment, parseArgs, atomicInteger, validatePrivateMetadata, publicStepEvidence, bootstrapStorageDecision, classifyUiFailure, extractStaticControlIds } from './browser-run.mjs';
+import { APP_URL, validateEnvironment, parseArgs, atomicInteger, validatePrivateMetadata, publicStepEvidence, bootstrapStorageDecision, classifyUiFailure, extractStaticControlIds,
+  requireOperationBudget, newActionTransactions, waitForReadyButton } from './browser-run.mjs';
 
 const env = { CI:'true', GITHUB_ACTIONS:'true', RUNNER_OS:'Linux', GITHUB_REPOSITORY:'IBKR-BouncyBot/Midnight-Agent-AI-Wallet', GITHUB_RUN_ID:'123', RUNNER_TEMP:'/tmp/runner' };
+
+test('a new operation requires its full observation window plus clean-close reserve', () => {
+  const clock = 1_800_000_000_000, minute = 60_000;
+  for (const duration of [70 * minute, 25 * minute, 5 * minute]) {
+    const boundary = clock + duration + 5 * minute;
+    assert.throws(() => requireOperationBudget(boundary, duration, clock), error => error.code === 'INSUFFICIENT_OPERATION_BUDGET');
+    requireOperationBudget(boundary + 1, duration, clock);
+    assert.throws(() => requireOperationBudget(boundary, duration, boundary + 1), error => error.code === 'INSUFFICIENT_OPERATION_BUDGET');
+  }
+  // A failed preflight is retryable from the same saved progress next run. It
+  // has no timer or cancellation callback that could interrupt a started action.
+  requireOperationBudget(clock + 300 * minute, 70 * minute, clock);
+  for (const invalid of [0, -1, Infinity, NaN, 0.5]) assert.throws(() => requireOperationBudget(clock + 300 * minute, invalid, clock));
+});
+
+test('stale completion text cannot complete an owner action without its new transaction', () => {
+  const pause = '00' + '11'.repeat(32), resume = '00' + '22'.repeat(32), unrelated = '00' + '33'.repeat(32);
+  assert.equal(newActionTransactions([pause], [pause], 1), null);
+  assert.deepEqual(newActionTransactions([resume, pause], [pause], 1), [resume]);
+  assert.equal(newActionTransactions([pause], [], 6), null, 'partial bootstrap waits for all six operations');
+  assert.deepEqual(newActionTransactions([pause], [pause], 0), [], 'a rejection must add no transaction');
+  for (const current of [[pause, resume, unrelated], [pause, resume, resume]])
+    assert.throws(() => newActionTransactions(current, [pause], 1), error => error.code === 'UNEXPECTED_TRANSACTION_COUNT');
+  assert.throws(() => newActionTransactions([pause, resume], [pause], 0), error => error.code === 'UNEXPECTED_TRANSACTION_COUNT');
+});
+
+test('ready controls wait for real enablement and use only nonclicking actionability trials', async () => {
+  let checks = 0, trials = 0;
+  const locator = { count: async () => 1, isVisible: async () => true, isEnabled: async () => ++checks > 1,
+    async click(options) { assert.equal(options.trial, true); assert.equal(options.force, undefined); trials++; } };
+  await waitForReadyButton(locator, 'BOOTSTRAP_NOT_READY', 2_000);
+  assert.equal(checks, 2); assert.equal(trials, 1);
+  await assert.rejects(waitForReadyButton({ ...locator, isEnabled: async () => false }, 'FUNDED_DUST_CONTROL_NOT_READY', 1),
+    error => error.code === 'FUNDED_DUST_CONTROL_NOT_READY');
+  assert.equal(trials, 1, 'a funded but disabled control is neither clicked nor reported as missing funds');
+  await assert.rejects(waitForReadyButton({ ...locator, count: async () => 2 }, 'BOOTSTRAP_NOT_READY'),
+    error => error.code === 'AMBIGUOUS_ACTION_CONTROL');
+});
 test('browser execution requires the isolated GitHub repository runner', () => {
   validateEnvironment(env);
   for (const key of Object.keys(env)) assert.throws(() => validateEnvironment({ ...env, [key]: '' }));

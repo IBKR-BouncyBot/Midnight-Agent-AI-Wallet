@@ -22,7 +22,9 @@ jobs:
   real-lace:
     if: github.ref == 'refs/heads/codex/private-vault-feasibility'
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    # Browser work stops before starting an operation that cannot fit its
+    # remaining budget, leaving time to close and seal the test profile.
+    timeout-minutes: 330
     env:
       LACE_TEST_MODE: ${{ inputs.mode }}
       LACE_STATE_RUN: ${{ inputs.state_run_id }}

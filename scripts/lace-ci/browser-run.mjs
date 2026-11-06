@@ -15,11 +15,26 @@ const EXTENSION_ID = 'gafhhkghbfjjkeiendhlofajokpaflmk';
 const VERSION = '2.5.1';
 const SCHEMA = 'lace-ci-private-session-v1';
 const OP_TIMEOUT = 25 * 60_000;
+const BROWSER_BUDGET = 300 * 60_000;
+const CLOSE_RESERVE = 5 * 60_000;
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const now = () => new Date().toISOString();
 class Stop extends Error { constructor(code) { super(code); this.code = code; } }
 function requireThat(value, code) { if (!value) throw new Stop(code); }
+export function requireOperationBudget(deadline, operationMs, currentTime = Date.now()) {
+  requireThat(Number.isSafeInteger(deadline) && Number.isSafeInteger(currentTime)
+    && Number.isSafeInteger(operationMs) && operationMs > 0, 'INVALID_OPERATION_BUDGET');
+  requireThat(deadline - currentTime > operationMs + CLOSE_RESERVE, 'INSUFFICIENT_OPERATION_BUDGET');
+}
+export function newActionTransactions(current, previous, expected) {
+  requireThat(Array.isArray(current) && Array.isArray(previous) && Number.isSafeInteger(expected) && expected >= 0
+    && [...current, ...previous].every(id => /^[a-f0-9]{66}$/.test(id)), 'INVALID_ACTION_TRANSACTIONS');
+  const added = current.filter(id => !previous.includes(id));
+  requireThat(new Set(current).size === current.length && new Set(previous).size === previous.length
+    && added.length <= expected, 'UNEXPECTED_TRANSACTION_COUNT');
+  return added.length === expected ? added : null;
+}
 export function validateEnvironment(env = process.env) {
   requireThat(env.CI === 'true' && env.GITHUB_ACTIONS === 'true' && env.RUNNER_OS === 'Linux'
     && env.GITHUB_REPOSITORY === REPOSITORY && /^\d+$/.test(env.GITHUB_RUN_ID ?? '') && env.RUNNER_TEMP,
@@ -158,9 +173,22 @@ async function bounded(promise, timeout = 60_000) {
   try { return await Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new Stop('OBSERVATION_TIMEOUT')), timeout); })]); }
   finally { clearTimeout(timer); }
 }
+export async function waitForReadyButton(locator, stopCode, timeout = 120_000) {
+  try {
+    await poll(async () => {
+      const count = await locator.count(); requireThat(count <= 1, 'AMBIGUOUS_ACTION_CONTROL');
+      if (count !== 1 || !await visible(locator) || !await locator.isEnabled()) return false;
+      // Trial is an actionability check only; it never clicks or forces through
+      // an overlay. Readiness failures occur before the pending-action marker.
+      try { await locator.click({ trial:true, timeout:1_000 }); return true; }
+      catch (error) { if (error?.name === 'TimeoutError') return false; throw error; }
+    }, timeout);
+  } catch (error) { if (error instanceof Stop && error.code === 'OBSERVATION_TIMEOUT') throw new Stop(stopCode); throw error; }
+}
 
 export async function main(args = process.argv.slice(2), env = process.env) {
   validateEnvironment(env); // Before imports, profile access, or any browser launch.
+  const operationDeadline = Date.now() + BROWSER_BUDGET;
   requireThat(process.platform === 'linux', 'LINUX_RUNNER_REQUIRED');
   const options = parseArgs(args), tempRoot = await realpath(env.RUNNER_TEMP);
   const stateDir = await containedPath(tempRoot, options['state-dir'], options.mode !== 'bootstrap');
@@ -386,11 +414,15 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     return { status: value.status, settlementVerified: value.settlementVerified,
       ...(finalized ? { transactionId: value.transactionId, contractAddress: value.contractAddress, blockHash: value.finalizedBlockHash } : {}) };
   }
-  async function action(name, click, observe, { maxApprovals = 1, expectedTransactions = 1, timeout = OP_TIMEOUT } = {}) {
+  async function action(name, click, observe, { maxApprovals = 1, expectedTransactions = 1, timeout = OP_TIMEOUT, ready } = {}) {
     if (metadata.completedSteps.includes(name)) { report.operations.push({ step: name, restoredCompleted: true, ...publicStepEvidence(metadata.stepEvidence[name]) }); await save(); return; }
     requireThat(metadata.pendingAction === null, 'ACTION_UNRESOLVED');
     await publicWallet(); await stage(name);
+    if (ready) await ready();
     const before = await uiPublic(), prior = transactionIds(before), startApprovals = approvals, started = Date.now();
+    // Stop between operations only. Once an action starts, its own observation
+    // timeout governs; this budget never cancels an approval or triggers resend.
+    requireOperationBudget(operationDeadline, timeout);
     metadata.pendingAction = { step: name, phase: 'before-ui-click', startedAt: now(), transactionIdsBefore: prior };
     await persist(); await click();
     const result = await poll(async () => {
@@ -399,10 +431,13 @@ export async function main(args = process.argv.slice(2), env = process.env) {
       // A live checkpoint intentionally makes phase=unresolved while the job
       // runs. Only an idle unresolved state is a recovery stop.
       requireThat(!(ui.canLock && ui.phase === 'unresolved') && !ui.statusError, 'APP_ACTION_UNRESOLVED');
+      const added = newActionTransactions(transactionIds(ui), prior, expectedTransactions);
+      // Pause and resume share the same status text and unchanged balances.
+      // Wait for this operation's newly recorded transaction before inspecting
+      // its final policy; an earlier rendered completion cannot satisfy it.
+      if (added === null) return false;
       const observed = await observe(ui, before);
       if (!observed) return false;
-      const added = transactionIds(ui).filter(id => !prior.includes(id));
-      requireThat(added.length === expectedTransactions, 'UNEXPECTED_TRANSACTION_COUNT');
       return { ...observed, transactionIds: added, walletApprovals: approvals - startApprovals, durationMs: Date.now() - started };
     }, timeout);
     metadata.stepEvidence[name] = result; metadata.completedSteps.push(name); metadata.pendingAction = null;
@@ -601,6 +636,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     await settingsDiagnostics().catch(() => {});
     if (report.stopCode === 'PREVIEW_NIGHT_FUNDING_REQUIRED') report.nextAction = 'Fund the recorded disposable Preview NIGHT address, then restore this exact encrypted profile. No designation or app transaction was sent.';
     report.uncertainAction = metadata.pendingAction?.step ?? null; process.exitCode = 1;
+    if (report.stopCode === 'INSUFFICIENT_OPERATION_BUDGET') report.nextAction = 'Continue from this exact cleanly closed encrypted profile in a new run. No next action was started.';
   } finally {
     report.finishedAt = now();
     if (context) { try { await context.close(); report.browserClosed = true; } catch { report.status = 'stopped'; report.stopCode = 'BROWSER_CLOSE_FAILED'; process.exitCode = 1; } }
@@ -636,15 +672,14 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     await stage('wait-for-public-dust');
     await poll(async () => BigInt((await publicWallet()).dustAtomic) > 0n, 10 * 60_000);
     await app.locator('[data-screen="vault"]').click(); await app.locator('#refresh').click();
-    await action('deploy-and-fund-vault', async () => {
-      requireThat(await app.locator('#bootstrap').isEnabled(), 'BOOTSTRAP_NOT_READY'); await app.locator('#bootstrap').click();
-    }, async ui => {
+    await action('deploy-and-fund-vault', () => app.locator('#bootstrap').click(), async ui => {
       if (!ui.canLock || !ui.status.startsWith('bootstrap completed.')) return false;
       balances(ui, '100000000700', '0', '70000000490');
       for (const name of ['deploy token', 'mint', 'deploy vault', 'disable maintenance', 'initialize policy', 'fund'])
         requireThat(ui.activity.filter(item => item.label === name + ' · finalized' && item.transactionId).length === 1, 'BOOTSTRAP_OPERATION_MISSING');
       return { status: 'finalized', vaultAddress: ui.vaultAddress };
-    }, { maxApprovals: 6, expectedTransactions: 6, timeout: 70 * 60_000 });
+    }, { maxApprovals: 6, expectedTransactions: 6, timeout: 70 * 60_000,
+      ready: () => waitForReadyButton(app.locator('#bootstrap'), 'BOOTSTRAP_NOT_READY') });
     await payment('reject-per-payment-limit', '50000000351', false, '100000000700', '0', '70000000490');
     await payment('first-payment', '40000000280', true, '60000000420', '40000000280', '30000000210');
     await payment('reject-cumulative-limit', '40000000280', false, '60000000420', '40000000280', '30000000210');
@@ -665,7 +700,8 @@ export async function main(args = process.argv.slice(2), env = process.env) {
       const added = transactionIds(ui).filter(id => !transactionIds(before).includes(id));
       requireThat(added.length === (accepted ? 1 : 0), 'UNEXPECTED_PAYMENT_TRANSACTION_COUNT');
       return { status: accepted ? 'finalized' : 'rejected', amountAtomic: amount, receipt: checked };
-    }, { maxApprovals: accepted ? 1 : 0, expectedTransactions: accepted ? 1 : 0 });
+    }, { maxApprovals: accepted ? 1 : 0, expectedTransactions: accepted ? 1 : 0,
+      ready: () => waitForReadyButton(app.locator('#pay'), 'PAYMENT_CONTROL_NOT_READY') });
   }
   async function owner(kind, balance, spent, remaining) {
     await app.locator('[data-screen="owner"]').click();
@@ -677,7 +713,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
       if (kind === 'resume') requireThat(!ui.policy.includes('Agent paused.') && ui.canPay, 'RESUME_NOT_ENFORCED');
       if (kind === 'revoke') requireThat(ui.policy.includes('Agent revoked.') && !ui.canPay, 'REVOCATION_NOT_ENFORCED');
       return { status: 'finalized', paymentDisabled: !ui.canPay };
-    });
+    }, { ready: () => waitForReadyButton(app.locator('#owner-' + command), 'OWNER_CONTROL_NOT_READY') });
   }
   async function backupAndUnlock() {
     if (metadata.completedSteps.includes('backup-lock-unlock')) {
@@ -686,6 +722,8 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     await stage('encrypted-backup-lock-and-unlock');
     const before = await uiPublic();
     await app.locator('[data-screen="connect"]').click();
+    await waitForReadyButton(app.locator('#backup'), 'BACKUP_CONTROL_NOT_READY');
+    requireOperationBudget(operationDeadline, 5 * 60_000);
     metadata.pendingAction = { step: 'backup-lock-unlock', phase: 'before-ui-click', startedAt: now() }; await persist();
     const pending = app.waitForEvent('download'); await app.locator('#backup').click();
     const download = await pending; const file = path.join(stateDir, 'app-encrypted-backup.midnight-backup'); await download.saveAs(file);
@@ -706,14 +744,16 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     await wallet.goto(`chrome-extension://${EXTENSION_ID}/expo/index.html`);
     await wallet.getByTestId('portfolio-tab-btn').click();
     const button = wallet.getByTestId('account-card-generate-dust-button');
-    await poll(async () => await visible(button), 120_000);
-    requireThat(await button.count() === 1 && await button.isEnabled(), 'PREVIEW_NIGHT_FUNDING_REQUIRED');
+    await waitForReadyButton(button, 'FUNDED_DUST_CONTROL_NOT_READY');
+    requireThat(BigInt((await publicWallet()).nightAtomic) > 0n, 'PREVIEW_NIGHT_FUNDING_REQUIRED');
     await button.click();
     const address = wallet.getByTestId('dust-address-input-value'); await address.waitFor();
     requireThat(await address.inputValue() === metadata.publicAddresses.dustAddress, 'DUST_RECIPIENT_MISMATCH');
     const designate = wallet.getByTestId('designate-button');
-    await poll(async () => await designate.isEnabled(), 120_000);
-    await designate.click(); await wallet.getByTestId('confirm-designation-button').waitFor();
+    await waitForReadyButton(designate, 'DUST_DESIGNATION_NOT_READY');
+    await designate.click();
+    await waitForReadyButton(wallet.getByTestId('confirm-designation-button'), 'DUST_CONFIRMATION_NOT_READY');
+    requireOperationBudget(operationDeadline, 25 * 60_000);
     metadata.pendingAction = { step: 'generate-dust', phase: 'before-ui-click', startedAt: now() }; await persist();
     await wallet.getByTestId('confirm-designation-button').click(); await auth(wallet);
     await poll(async () => BigInt((await publicWallet()).dustCapAtomic) > 0n, 15 * 60_000);
