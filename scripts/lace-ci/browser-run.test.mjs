@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { APP_URL, validateEnvironment, parseArgs, atomicInteger, validatePrivateMetadata, publicStepEvidence, bootstrapStorageDecision, classifyUiFailure } from './browser-run.mjs';
+import { APP_URL, validateEnvironment, parseArgs, atomicInteger, validatePrivateMetadata, publicStepEvidence, bootstrapStorageDecision, classifyUiFailure, extractStaticControlIds } from './browser-run.mjs';
 
 const env = { CI:'true', GITHUB_ACTIONS:'true', RUNNER_OS:'Linux', GITHUB_REPOSITORY:'IBKR-BouncyBot/Midnight-Agent-AI-Wallet', GITHUB_RUN_ID:'123', RUNNER_TEMP:'/tmp/runner' };
 test('browser execution requires the isolated GitHub repository runner', () => {
@@ -60,4 +60,10 @@ test('UI failure diagnostics expose only fixed booleans, never raw error details
   assert.deepEqual(result, {timeout:true,disabled:true,pointerIntercepted:true,detached:true,notVisible:false});
   assert.equal(JSON.stringify(result).includes('secret-password'),false);
   assert.deepEqual(classifyUiFailure({message:'unexpected private data'}), {timeout:false,disabled:false,pointerIntercepted:false,detached:false,notVisible:false});
+});
+test('control inventory allowlist comes only from bounded static public IDs', () => {
+  const source = 'testID:"settings-tab-btn",testID:\'known-overlay\',testID:`static-modal`,testID:`dynamic-${secret}`,testID:computed,value:"private-password",text:"private words",testID:"settings-tab-btn"';
+  assert.deepEqual(extractStaticControlIds(source), ['known-overlay','settings-tab-btn','static-modal']);
+  assert.deepEqual(extractStaticControlIds('testID:"'+'a'.repeat(121)+'"'),[]);
+  assert.deepEqual(extractStaticControlIds('testID:"not a control"'),[]);
 });

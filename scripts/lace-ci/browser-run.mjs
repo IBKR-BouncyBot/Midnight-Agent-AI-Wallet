@@ -4,7 +4,7 @@
  * encrypted profile archive; this is NOT durability against loss of the runner.
  */
 import { createHash, randomBytes } from 'node:crypto';
-import { readFile, mkdir, lstat, realpath, open, rename, chmod } from 'node:fs/promises';
+import { readFile, mkdir, lstat, realpath, open, rename, chmod, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { cpus, totalmem } from 'node:os';
@@ -101,6 +101,32 @@ export function classifyUiFailure(error) {
     detached: /not attached|detached from|element was detached/i.test(message),
     notVisible: /not visible|outside of the viewport/i.test(message) };
 }
+export function extractStaticControlIds(source) {
+  // Only literal public testID names in the official package. Dynamic
+  // templates/expressions and arbitrary DOM names are deliberately excluded.
+  requireThat(typeof source === 'string', 'INVALID_STATIC_CONTROL_SOURCE');
+  const ids = new Set();
+  for (const match of source.matchAll(/\btestID\s*:\s*(['"`])([a-zA-Z][a-zA-Z0-9:_-]{0,119})\1/g)) ids.add(match[2]);
+  return [...ids].sort();
+}
+async function knownExtensionControlIds(extensionDir) {
+  const ids = new Set(); let totalBytes = 0, files = 0;
+  // Both official extension webpack chunks and actual Expo-rendered UI.
+  for (const relative of ['js', 'expo/_expo/static/js/web']) {
+    const directory = path.join(extensionDir, relative);
+    requireThat(!(await lstat(directory)).isSymbolicLink(), 'EXTENSION_SOURCE_SYMLINK_REJECTED');
+    for (const entry of await readdir(directory, { withFileTypes:true })) {
+      if (!entry.name.endsWith('.js')) continue;
+      requireThat(entry.isFile() && !entry.isSymbolicLink(), 'EXTENSION_SOURCE_FILE_REQUIRED');
+      const file = path.join(directory, entry.name), info = await lstat(file);
+      totalBytes += info.size; files++;
+      requireThat(info.size <= 64 * 1024 * 1024 && totalBytes <= 512 * 1024 * 1024 && files <= 2_000, 'EXTENSION_SOURCE_LIMIT');
+      for (const id of extractStaticControlIds(await readFile(file, 'utf8'))) ids.add(id);
+    }
+  }
+  requireThat(ids.size <= 10_000, 'EXTENSION_CONTROL_LIMIT');
+  return [...ids].sort();
+}
 async function exists(file) { try { await lstat(file); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; } }
 async function containedPath(root, requested, existing = false) {
   const absolute = path.resolve(requested);
@@ -148,6 +174,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
   const acquisition = JSON.parse(await readFile(path.join(path.dirname(extensionDir), 'verification.json'), 'utf8'));
   requireThat(acquisition.developerSignatureVerified === true && acquisition.webStorePublisherSignatureVerified === true
     && acquisition.version === VERSION && acquisition.extensionModified === false, 'EXTENSION_PROVENANCE_REQUIRED');
+  const staticControlIds = await knownExtensionControlIds(extensionDir);
   const privateFile = path.join(stateDir, 'session-private.json');
   let metadata;
   if (options.mode === 'bootstrap') {
@@ -211,6 +238,24 @@ export async function main(args = process.argv.slice(2), env = process.env) {
         enabled: count === 1 && await locator.isEnabled().catch(() => false) };
     }
     report.settingsControls = controls;
+    // Match visible DOM IDs against the package-derived allowlist in-page.
+    // The page returns only this bounded metadata projection, never text,
+    // input values, HTML, unrecognized IDs, or arbitrary attributes.
+    report.visibleKnownControls = await wallet.evaluate((knownIds) => {
+      const known = new Set(knownIds), collected = new Map();
+      for (const element of document.querySelectorAll('[data-testid]')) {
+        const id = element.getAttribute('data-testid'); if (!known.has(id)) continue;
+        const style = getComputedStyle(element), rect = element.getBoundingClientRect();
+        if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse'
+          || !rect.width || !rect.height || rect.bottom <= 0 || rect.right <= 0
+          || rect.top >= innerHeight || rect.left >= innerWidth) continue;
+        const enabled = !element.matches(':disabled') && !element.closest('[aria-disabled="true"], [disabled]');
+        const old = collected.get(id);
+        if (old) { old.count++; old.enabled = old.enabled && enabled; }
+        else collected.set(id, { testID:id, count:1, enabled });
+      }
+      return [...collected.values()].sort((a,b)=>a.testID.localeCompare(b.testID)).slice(0,128);
+    }, staticControlIds).catch(() => []);
     const tab = wallet.getByTestId('settings-tab-btn');
     if (await tab.count() === 1) report.settingsHitTest = await tab.evaluate((element, allowlist) => {
       const rect = element.getBoundingClientRect();
@@ -364,11 +409,32 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     await persist(); report.operations.push({ step: name, ...publicStepEvidence(result) }); await save();
   }
   async function connectApp(mode, { allowMissing = false } = {}) {
-    await app.locator('[data-screen="connect"]').click();
-    await app.locator('#find-wallets').click();
-    await poll(async () => (await app.locator('#wallet-select option').allTextContents()).some(item => item === 'Lace'), 60_000);
-    await app.locator('#in-process').check(); await app.locator('#storage-mode').selectOption(mode);
-    await app.locator('#storage-password').fill(metadata.appPassword); await app.locator('#connect').click();
+    await uiStep('open-app-connect-panel', () => app.locator('[data-screen="connect"]').click());
+    await uiStep('discover-real-lace-connector', async () => {
+      await app.locator('#find-wallets').click();
+      await poll(async () => {
+        // Public injected metadata only. Do not read any private wallet state.
+        report.connectors = await app.evaluate(() => Object.values(window.midnight ?? {})
+          .filter(item => item?.rdns === 'io.lace.wallet').slice(0,8).map(item => ({
+            rdns:'io.lace.wallet', name:/^lace$/i.test(item.name ?? '') ? item.name : null,
+            apiVersion:/^4\.[0-9]{1,3}\.[0-9]{1,3}(?:[-+][0-9A-Za-z.-]{1,80})?$/.test(item.apiVersion ?? '') ? item.apiVersion : null,
+            connectAvailable:typeof item.connect === 'function' })));
+        await save();
+        const candidates = report.connectors.filter(item=>item.name && item.apiVersion && item.connectAvailable);
+        requireThat(candidates.length <= 1, 'MULTIPLE_LACE_CONNECTORS');
+        if (!candidates.length) return false;
+        const options = await app.locator('#wallet-select option').allTextContents();
+        // Official 2.5.1 advertises lowercase "lace". Bind to the actual public
+        // connector name instead of assuming title-case display text.
+        if (!options.includes(candidates[0].name)) return false;
+        await app.locator('#wallet-select').selectOption({ label:candidates[0].name }); return true;
+      },60_000);
+    });
+    await uiStep('request-app-connection', async () => {
+      await app.locator('#in-process').check(); await app.locator('#storage-mode').selectOption(mode);
+      await app.locator('#storage-password').fill(metadata.appPassword); await app.locator('#connect').click();
+    });
+    await stage('wait-real-lace-authorization');
     let authorized = false;
     const outcome = await poll(async () => {
       const pages = context.pages().filter(page => page.url().startsWith(`chrome-extension://${EXTENSION_ID}/`) && page.url().includes('#/midnight-authorize-dapp'));
@@ -388,6 +454,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
       return false;
     }, 180_000);
     if (outcome === 'missing') return outcome;
+    await stage('read-connected-wallet-public-state');
     const publicInfo = await publicWallet();
     requireThat(await app.locator('#funding-address').inputValue() === publicInfo.unshieldedAddress, 'APP_ACCOUNT_BINDING_FAILED');
     metadata.accountId = publicInfo.unshieldedAddress;
