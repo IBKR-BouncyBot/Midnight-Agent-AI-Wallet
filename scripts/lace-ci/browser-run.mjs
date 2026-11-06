@@ -326,7 +326,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     await stage('launch-isolated-extension');
     context = await chromium.launchPersistentContext(path.join(stateDir, 'profile'), {
       channel: 'chromium', headless: true, args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`],
-      viewport: { width: 1280, height: 960 }, acceptDownloads: true, downloadsPath: path.join(stateDir, 'downloads') });
+      viewport: { width: 1280, height: 960 }, locale: 'en-US', acceptDownloads: true, downloadsPath: path.join(stateDir, 'downloads') });
     context.setDefaultTimeout(30_000); report.chromium = context.browser()?.version() ?? 'not-exposed';
     wallet = await context.newPage(); await wallet.goto(`chrome-extension://${EXTENSION_ID}/expo/index.html`);
     if (options.mode === 'bootstrap') {

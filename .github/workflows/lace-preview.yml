@@ -51,7 +51,10 @@ jobs:
       - name: Check package verification and encrypted-state boundaries
         run: node --test tests/lace-ci-state.test.mjs tests/lace-extension-package.test.mjs scripts/lace-ci/browser-run.test.mjs
       - name: Install pinned Chromium test runtime
-        run: npx --no-install playwright install --with-deps chromium
+        timeout-minutes: 10
+        # ubuntu-24.04 already includes the Chromium shared libraries. Avoid
+        # optional system-font downloads from an unrelated apt mirror.
+        run: npx --no-install playwright install chromium
       - name: Acquire and authenticate official Lace 2.5.1
         run: |
           node scripts/lace-ci/verify-extension.mjs --out "$RUNNER_TEMP/lace-ci/package"
