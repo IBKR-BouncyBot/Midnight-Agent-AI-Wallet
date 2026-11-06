@@ -22,7 +22,8 @@ const PREVIEW_ENDPOINTS = Object.freeze({
   indexerWsUri: ['wss://blockfrost.lw.iog.io/midnight-preview/ws', 'wss://indexer.preview.midnight.network/api/v4/graphql/ws'],
   substrateNodeUri: ['https://blockfrost.lw.iog.io/midnight-preview-rpc/', 'https://rpc.preview.midnight.network/', 'wss://rpc.preview.midnight.network/'],
 });
-const PREVIEW_HOSTS = Object.freeze(['blockfrost.lw.iog.io', 'indexer.preview.midnight.network', 'rpc.preview.midnight.network']);
+const PREVIEW_HOSTS = Object.freeze(['blockfrost.lw.iog.io', 'indexer.preview.midnight.network', 'rpc.preview.midnight.network',
+  'e.lw.iog.io', 'midnight-preview.blockfrost.io', 'rpc.midnight-preview.blockfrost.io']);
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const now = () => new Date().toISOString();
@@ -143,6 +144,24 @@ export function sanitizePreviewConfiguration(config) {
   }
   result.matchesKnownPreviewEndpoints = Object.keys(PREVIEW_ENDPOINTS).every(field => result[field] !== null);
   return result;
+}
+export function publicEndpointMetadata(config) {
+  return Object.fromEntries(Object.keys(PREVIEW_ENDPOINTS).map(field=>{
+    try {
+      const value=new URL(config?.[field]);
+      return [field,{knownHost:PREVIEW_HOSTS.includes(value.hostname)?value.hostname:null,hasQuery:Boolean(value.search)}];
+    } catch { return [field,{knownHost:null,hasQuery:false}]; }
+  }));
+}
+export function isLaceViewUrl(value) {
+  try {
+    const uri=new URL(value);return uri.protocol==='chrome-extension:'&&uri.hostname===EXTENSION_ID
+      &&['/expo/index.html','/index.html'].includes(uri.pathname);
+  } catch { return false; }
+}
+export function requireRefreshPreflight({pendingAction,completedSteps,operationCount,approvalCount,transactionCount}) {
+  requireThat(pendingAction===null&&Array.isArray(completedSteps)&&completedSteps.length===0
+    &&operationCount===0&&approvalCount===0&&transactionCount===0,'REMOTE_CONFIG_REFRESH_REQUIRES_NO_OPERATIONS');
 }
 export function previewPublicHost(value) {
   try { const parsed = new URL(value); return ['https:', 'wss:'].includes(parsed.protocol) && PREVIEW_HOSTS.includes(parsed.hostname) ? parsed.hostname : null; }
@@ -337,12 +356,12 @@ export async function main(args = process.argv.slice(2), env = process.env) {
   }
   async function fundingObservation(current) {
     const sample = {at:now(),nightAtomic:current.nightAtomic,dustAtomic:current.dustAtomic,dustCapAtomic:current.dustCapAtomic,
-      configuration:current.configuration,syncUi:await syncUiSummary(),health:await anonymousEndpointHealth(current.configuration),
+      configuration:current.configuration,endpointMetadata:current.endpointMetadata,syncUi:await syncUiSummary(),health:await anonymousEndpointHealth(current.configuration),
       traffic:structuredClone(report.previewNetwork.hosts)};
     report.fundingObservations ??= [];report.fundingObservations.push(sample);report.fundingObservations=report.fundingObservations.slice(-20);
     await save();process.stdout.write(JSON.stringify({stage:'observe-preview-wallet-funding',at:sample.at,
       nightAtomic:sample.nightAtomic,dustAtomic:sample.dustAtomic,dustCapAtomic:sample.dustCapAtomic,syncUi:sample.syncUi,
-      configuration:sample.configuration,health:sample.health,traffic:sample.traffic})+'\n');
+      configuration:sample.configuration,endpointMetadata:sample.endpointMetadata,health:sample.health,traffic:sample.traffic})+'\n');
   }
   async function uiStep(name, task) {
     await stage(name);
@@ -442,6 +461,24 @@ export async function main(args = process.argv.slice(2), env = process.env) {
       }
     }, 60_000);
   }
+  async function waitForRestoredWallet() {
+    let readySince=null;
+    await poll(async()=>{
+      requireThat(!await visible(wallet.getByTestId('onboarding-start-create-wallet-button')),'RESTORED_WALLET_MISSING');
+      if(await unlockWalletIfVisible())readySince=null;
+      try {
+        const readyControl=await visible(wallet.getByTestId('network-selection-sheet-cancel-button'))
+          ?wallet.getByTestId('network-selection-sheet-cancel-button')
+          :await visible(wallet.getByTestId('midnight-settings-sheet-header'))
+            ?wallet.getByTestId('proof-server-in-process-radio'):wallet.getByTestId('settings-tab-btn');
+        await readyControl.click({trial:true,timeout:1_000});
+        readySince??=Date.now();return Date.now()-readySince>=1_000;
+      } catch(error) {
+        readySince=null;report.lastSettingsClickFailure=classifyUiFailure(error);
+        if(error?.name!=='TimeoutError')throw error;return false;
+      }
+    },90_000);
+  }
   async function publicWallet() {
     // Read only documented PUBLIC methods of the genuine injected extension.
     const result = await bounded(app.evaluate(async () => {
@@ -458,6 +495,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
         nightAtomic: String(unshieldedBalances['0'.repeat(64)] ?? 0n),
         dustAtomic: String(balance.balance), dustCapAtomic: String(balance.cap) };
     }));
+    result.endpointMetadata=publicEndpointMetadata(result.configuration);
     result.configuration=sanitizePreviewConfiguration(result.configuration);
     requireThat(/^4\./.test(result.apiVersion) && result.networkId === 'preview' && result.connectionNetwork === 'preview'
       && result.connectionStatus === 'connected' && result.remoteProverReported === false, 'PUBLIC_WALLET_CONTEXT_MISMATCH');
@@ -705,26 +743,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
       await wallet.getByTestId('onboarding-create-wallet-toggle-midnight').click(); await delay(250);
       await wallet.getByTestId('onboarding-create-wallet-finish-button').click();
     } else {
-      await uiStep('unlock-exact-restored-wallet', async () => {
-        let readySince = null;
-        await poll(async () => {
-          requireThat(!await visible(wallet.getByTestId('onboarding-start-create-wallet-button')), 'RESTORED_WALLET_MISSING');
-          if (await unlockWalletIfVisible()) readySince = null;
-          try {
-            // A restored, genuinely clickable settings sheet is also ready:
-            // selectWasm() will close that known sheet before tab navigation.
-            const readyControl = await visible(wallet.getByTestId('network-selection-sheet-cancel-button'))
-              ? wallet.getByTestId('network-selection-sheet-cancel-button')
-              : await visible(wallet.getByTestId('midnight-settings-sheet-header'))
-                ? wallet.getByTestId('proof-server-in-process-radio') : wallet.getByTestId('settings-tab-btn');
-            await readyControl.click({ trial:true, timeout:1_000 });
-            readySince ??= Date.now(); return Date.now() - readySince >= 1_000;
-          } catch (error) {
-            readySince = null; report.lastSettingsClickFailure = classifyUiFailure(error);
-            if (error?.name !== 'TimeoutError') throw error; return false;
-          }
-        }, 90_000);
-      });
+      await uiStep('unlock-exact-restored-wallet',waitForRestoredWallet);
     }
     await wallet.getByTestId('settings-tab-btn').waitFor({ timeout: 180_000 });
     metadata.bootstrapProgress.walletCreated = true; await persist();
@@ -788,6 +807,10 @@ export async function main(args = process.argv.slice(2), env = process.env) {
   }
 
   async function exercise() {
+    if(metadata.completedSteps.length===0&&!metadata.remoteConfigRefresh)await refreshRemoteConfiguration();
+    else if(metadata.remoteConfigRefresh) {
+      report.remoteConfigurationRefresh={attempted:false,previousAttemptRecorded:true,previousAttemptCompleted:metadata.remoteConfigRefresh.completed===true};await save();
+    }
     const initial = await publicWallet();
     if (BigInt(initial.dustAtomic) === 0n && BigInt(initial.dustCapAtomic) === 0n) await generateDust();
     await stage('wait-for-public-dust');
@@ -812,6 +835,58 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     await owner('withdraw', '0', '50000000350', '20000000140');
     const final = await uiPublic(); requireThat(final.recipient === '2 verified payments · 50,000,000,350 atomic units received', 'RECEIVED_TOTAL_MISMATCH');
     report.final = { balanceAtomic: atomicInteger(final.balance), spentAtomic: atomicInteger(final.spent), remainingAllowanceAtomic: atomicInteger(final.remaining), verifiedReceivedAtomic: '50000000350', paymentCount: 2, vaultAddress: final.vaultAddress };
+  }
+  async function refreshRemoteConfiguration() {
+    const initialUi=await uiPublic();
+    requireRefreshPreflight({pendingAction:metadata.pendingAction,completedSteps:metadata.completedSteps,
+      operationCount:report.operations.length,approvalCount:approvals,transactionCount:transactionIds(initialUi).length});
+    requireThat(initialUi.phase!=='unresolved'&&initialUi.canLock,'REMOTE_CONFIG_REFRESH_SESSION_NOT_IDLE');
+    requireOperationBudget(operationDeadline,10*60_000);
+    const before=await publicWallet();
+    report.remoteConfigurationRefresh={startedAt:now(),method:'close-all-Lace-views-and-reopen-once',
+      before:{configuration:before.configuration,endpointMetadata:before.endpointMetadata},
+      sameContext:true,viewCloseCycleObserved:false,reopened:false,
+      boundary:'Normal closure triggers the official extension refresh path; no flag payload is read or injected, and successful remote configuration delivery is not assumed.'};
+    // Persist the one allowed attempt across archived-profile runs too. An
+    // interrupted attempt never silently becomes another refresh cycle.
+    metadata.remoteConfigRefresh={attemptedAt:now(),completed:false};await persist();await save();
+    await uiStep('lock-app-before-supported-config-refresh',async()=>{
+      await app.locator('[data-screen="connect"]').click();
+      await waitForReadyButton(app.locator('#disconnect'),'CONFIG_REFRESH_APP_NOT_IDLE');
+      await app.locator('#disconnect').click();
+      await poll(async()=>await app.locator('#connection-label').textContent()==='Not connected'&&await app.locator('#connect').isEnabled());
+    });
+    await uiStep('close-all-lace-views-for-config-refresh',async()=>{
+      const extensionPages=context.pages().filter(page=>page.url().startsWith(`chrome-extension://${EXTENSION_ID}/`));
+      requireThat(extensionPages.length>0&&extensionPages.every(page=>isLaceViewUrl(page.url())),'UNKNOWN_LACE_VIEW_OPEN');
+      requireThat(extensionPages.every(page=>!page.url().includes('prove-midnight-transaction')&&!page.url().includes('midnight-authorize-dapp')),'CONFIG_REFRESH_APPROVAL_WINDOW_OPEN');
+      for(const page of extensionPages)await page.close();
+      requireThat(!context.pages().some(page=>page.url().startsWith(`chrome-extension://${EXTENSION_ID}/`)),'LACE_VIEWS_STILL_OPEN');
+      report.remoteConfigurationRefresh.closedViewCount=extensionPages.length;
+      report.remoteConfigurationRefresh.viewCloseCycleObserved=true;await save();
+    });
+    await stage('wait-supported-remote-config-refresh');await delay(10_000);
+    await uiStep('reopen-same-lace-wallet-after-refresh',async()=>{
+      // A fresh view can require a fresh unlock. Permit it only after any
+      // previous attempt actually succeeded; never retry a failed password.
+      requireThat(!walletUnlockAttempted||report.walletUnlockConfirmed===true,'PREVIOUS_WALLET_UNLOCK_FAILED');
+      walletUnlockAttempted=false;
+      wallet=await context.newPage();await wallet.goto(`chrome-extension://${EXTENSION_ID}/expo/index.html`);
+      await waitForRestoredWallet();report.remoteConfigurationRefresh.reopened=true;await save();
+    });
+    await stage('verify-preview-and-wasm-after-refresh');await selectWasm();
+    await uiStep('reload-disconnected-app-after-refresh',async()=>{
+      await app.reload({waitUntil:'domcontentloaded'});requireThat(app.url()===APP_URL,'APP_REDIRECT_REJECTED');await captureHostedBuild();
+    });
+    await connectApp('open');await prepareRecipient();
+    const after=await publicWallet();
+    const afterUi=await uiPublic();
+    requireThat(transactionIds(afterUi).length===0&&afterUi.phase!=='unresolved','CONFIG_REFRESH_UNEXPECTED_TRANSACTION');
+    report.remoteConfigurationRefresh.after={configuration:after.configuration,endpointMetadata:after.endpointMetadata};
+    report.remoteConfigurationRefresh.publicConfigurationProjectionChanged=JSON.stringify(report.remoteConfigurationRefresh.before)!==JSON.stringify(report.remoteConfigurationRefresh.after);
+    report.remoteConfigurationRefresh.samePublicAccount=true;report.remoteConfigurationRefresh.finishedAt=now();
+    metadata.remoteConfigRefresh.completed=true;await persist();await save();
+    process.stdout.write(JSON.stringify({stage:'supported-remote-config-refresh-observed',refresh:report.remoteConfigurationRefresh,traffic:report.previewNetwork.hosts})+'\n');
   }
   async function payment(name, amount, accepted, balance, spent, remaining) {
     await app.locator('[data-screen="pay"]').click();

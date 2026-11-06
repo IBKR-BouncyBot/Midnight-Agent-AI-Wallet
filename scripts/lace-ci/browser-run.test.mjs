@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { APP_URL, validateEnvironment, parseArgs, atomicInteger, validatePrivateMetadata, publicStepEvidence, bootstrapStorageDecision, classifyUiFailure, extractStaticControlIds,
-  requireOperationBudget, newActionTransactions, waitForReadyButton, sanitizePreviewConfiguration, previewPublicHost, parseSyncStatusLabel } from './browser-run.mjs';
+  requireOperationBudget, newActionTransactions, waitForReadyButton, sanitizePreviewConfiguration, previewPublicHost, parseSyncStatusLabel,
+  publicEndpointMetadata,isLaceViewUrl,requireRefreshPreflight } from './browser-run.mjs';
 
 const env = { CI:'true', GITHUB_ACTIONS:'true', RUNNER_OS:'Linux', GITHUB_REPOSITORY:'IBKR-BouncyBot/Midnight-Agent-AI-Wallet', GITHUB_RUN_ID:'123', RUNNER_TEMP:'/tmp/runner' };
 
@@ -127,4 +128,23 @@ test('wallet sync diagnostic emits recognized states and bounded percentages onl
   assert.deepEqual(parseSyncStatusLabel('Synced'),{state:'synced',percent:100});
   assert.deepEqual(parseSyncStatusLabel('Errortry again'),{state:'error',percent:null});
   for(const label of ['Syncing (101%)','secret wallet text','1234','Syncing (1.25%)'])assert.deepEqual(parseSyncStatusLabel(label),{state:'unrecognized',percent:null});
+});
+test('credential-bearing endpoint evidence exposes only known host and query presence',()=>{
+  const raw={indexerUri:'https://midnight-preview.blockfrost.io/api/v0?project_id=never-output-this',
+    indexerWsUri:'wss://midnight-preview.blockfrost.io/api/v0/ws?project_id=never-output-this',
+    substrateNodeUri:'https://rpc.midnight-preview.blockfrost.io?project_id=never-output-this'};
+  const projected=publicEndpointMetadata(raw);
+  assert.deepEqual(projected.indexerUri,{knownHost:'midnight-preview.blockfrost.io',hasQuery:true});
+  assert.equal(sanitizePreviewConfiguration(raw).indexerUri,null);
+  assert.equal(JSON.stringify(projected).includes('never-output-this'),false);
+  assert.deepEqual(publicEndpointMetadata({indexerUri:'https://private-host.invalid?secret=1'}).indexerUri,{knownHost:null,hasQuery:true});
+  assert.equal(previewPublicHost('https://e.lw.iog.io/flags?private=excluded'),'e.lw.iog.io');
+});
+test('supported refresh is limited to known Lace views and no prior operation',()=>{
+  assert.equal(isLaceViewUrl('chrome-extension://gafhhkghbfjjkeiendhlofajokpaflmk/expo/index.html'),true);
+  for(const url of [APP_URL,'chrome-extension://other/expo/index.html','chrome-extension://gafhhkghbfjjkeiendhlofajokpaflmk/unknown.html'])assert.equal(isLaceViewUrl(url),false);
+  const valid={pendingAction:null,completedSteps:[],operationCount:0,approvalCount:0,transactionCount:0};
+  requireRefreshPreflight(valid);
+  for(const patch of [{pendingAction:{step:'pay'}},{completedSteps:['generate-dust']},{operationCount:1},{approvalCount:1},{transactionCount:1}])
+    assert.throws(()=>requireRefreshPreflight({...valid,...patch}),/REMOTE_CONFIG_REFRESH_REQUIRES_NO_OPERATIONS/);
 });
