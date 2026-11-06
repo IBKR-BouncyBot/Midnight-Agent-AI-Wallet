@@ -6,4 +6,6 @@ The four shared stylesheets in `web/` (`styles.css`, `overview.css`, `landing.cs
 
 The unmodified Outfit variable fonts in `web/fonts/` are copyright 2021 The Outfit Project Authors, separately licensed under the SIL Open Font License in `web/fonts/OFL-Outfit.txt`. Their original provenance is retained in `web/fonts/README.md`. See also `docs/design-reference.md` and `web/NOTICE.md`.
 
+The front-page support section adapts Ballot Lab's support markup from that same revision. `web/support.mjs` and `web/assets/support-ada-qr.svg` are unmodified copies under its PolyForm Noncommercial 1.0.0 license. The public Cardano mainnet receiving address is preserved exactly, separately from testnet funding.
+
 Dependencies retain their respective upstream licenses. No license choice for the new wallet source is inferred from the handover.

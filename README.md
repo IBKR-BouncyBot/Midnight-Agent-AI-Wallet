@@ -23,6 +23,8 @@ npm run dev
 
 The public-testnet page connects to the runner on your own computer. It never asks you to paste a wallet seed. The runner uses its own fresh test wallets and keeps their state locally; the static website does not hold keys or run a prover. Preview funding is a separate step through the official faucet. See [testnet setup](docs/testnet-demo.md).
 
+**Verified on public Preview:** a real vault payment finalized in block **1627157**, with an independently synchronized merchant receipt and verified vault change. The [public transaction evidence](docs/evidence/preview-payment.json) records the actual 4,508-byte contract proof and matching ledger effects.
+
 Read [the verification record](docs/verification.md) for measured results and remaining work. Browser simulation, native execution, proof generation, local settlement and public Preview settlement are separate checks. A working connection is not a settled payment.
 
 ## Included
@@ -81,3 +83,17 @@ The runner and local prover see witnesses. Chain observers can see contract call
 CI separates protocol/storage, native-runtime, static frontend publication, and manually selected local proof/settlement jobs. GitHub Pages hosts only the frontend. See [third-party notices](THIRD_PARTY_NOTICES.md) for upstream licenses.
 
 The README infographic is a standalone SVG with the Outfit letterforms embedded as paths. Its [editable source](docs/images/wallet-explainer-source.svg) and [generation script](scripts/outline-infographic.py) are included.
+
+## Buy me a coffee
+
+If this wallet lab has been useful, you can support IBKR-BouncyBot with a little **NIGHT or ADA on Cardano mainnet**. Tips are optional; the demo is free to use.
+
+Scan the QR code or copy the address below. The [front-page support section](https://ibkr-bouncybot.github.io/Midnight-Agent-AI-Wallet/#support) also has a copy button.
+
+<img src="web/assets/support-ada-qr.svg" width="220" height="220" alt="QR code for the Cardano mainnet NIGHT or ADA support address">
+
+```text
+addr1q85w2v474ywzx868s69pghygek3vrhxm69e7c6ysuf28qhv8kmj5wd059grxl82f8h5mtyzl87cvqj8ldv2e0las7tnsdej9ax
+```
+
+Thank you for supporting development.

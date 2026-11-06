@@ -1,0 +1,164 @@
+{
+  "format": "midnight-preview-runner-observation-v1",
+  "observedAt": "2026-11-06T17:25:38.771Z",
+  "network": "preview",
+  "vault": {
+    "address": "cc892e0ad1479b18621ba172195df419c9ddabf146c1bfbf12586a871fc5a792",
+    "tokenId": "e94cdac556d4639ae8371162a98fc7e46eaa41717b50f81f7692b7a29e5be780",
+    "immutable": true
+  },
+  "fixtureAtomic": {
+    "funded": "100000000700",
+    "payment": "40000000280",
+    "ownerWithdrawal": "60000000420",
+    "allowance": "70000000490",
+    "perPaymentCeiling": "50000000350"
+  },
+  "payment": {
+    "paymentId": "81b40ef2-5c0e-423a-b137-7ca0c48d6aae",
+    "status": "finalized",
+    "transactionId": "007ce1b47a31b92f377673ca49709c635db02d0a61b394114b16b6763c3275dd1c",
+    "settlementEvidence": {
+      "network": "preview",
+      "contractAddress": "cc892e0ad1479b18621ba172195df419c9ddabf146c1bfbf12586a871fc5a792",
+      "transactionId": "007ce1b47a31b92f377673ca49709c635db02d0a61b394114b16b6763c3275dd1c",
+      "finalizedBlockHash": "63f63c884850a28579da12b38b4c50851dfa692a4d8ffe10d18493742f34a722",
+      "recipientReceiptVerified": true,
+      "vaultChangeVerified": true
+    }
+  },
+  "idempotency": {
+    "repeatedKey": "preview_verified_payment_0001",
+    "returnedSamePaymentId": true,
+    "returnedSameTransactionId": true,
+    "spentAndBalanceUnchanged": true
+  },
+  "rejections": {
+    "overRemainingAllowance": {
+      "amountAtomic": "40000000280",
+      "receipt": {
+        "paymentId": "cc82b546-8baf-41be-8093-f96f663fe90e",
+        "status": "rejected"
+      },
+      "spentAndBalanceUnchanged": true
+    },
+    "whilePaused": {
+      "amountAtomic": "100",
+      "receipt": {
+        "paymentId": "17d60eeb-fc4d-4d76-8ead-ccf8de7662f1",
+        "status": "rejected"
+      },
+      "spentAndBalanceUnchanged": true
+    }
+  },
+  "finalPolicy": {
+    "allowanceAtomic": "70000000490",
+    "perPaymentAtomic": "50000000350",
+    "spentAtomic": "40000000280",
+    "balanceAtomic": "0",
+    "paused": true,
+    "revoked": false
+  },
+  "merchant": {
+    "balanceAtomic": "40000000280",
+    "synced": true
+  },
+  "ownerWithdrawal": {
+    "transactionId": "004918ae556a045d3c14d6a59a0970dd6cd2f0a6a6bd8341894d6a9dcaba0bf7cc",
+    "status": "finalized",
+    "amountAtomic": "60000000420",
+    "receiptVerification": "The live service completed only after its independent owner wallet observed the expected test-asset balance."
+  },
+  "activity": [
+    {
+      "id": "5e9ce211-bb86-449a-8a58-bddfc73808ca",
+      "action": "register-dust",
+      "status": "finalized",
+      "transactionId": "008006acc2f392138648b96f84e6b6931a095bd52ad27b80ca6249d7fc540f7252",
+      "blockHash": "de47e6892427dffc47078a4b557c9cc50a9f1c3a8d359997e6c407fe5d26a6fb",
+      "blockHeight": 1627110
+    },
+    {
+      "id": "54377a14-e89d-4edd-bf4c-56eaab358109",
+      "action": "deploy-token",
+      "status": "finalized",
+      "transactionId": "005c6beacb52994ef0e24b032a17f21cc19fdcf35656c25a0933a5713dc35a4902",
+      "blockHash": "7531b0b818562e001b77c77ba78a8723ce3ec73f6df122843aa206d9e6aa9a17",
+      "blockHeight": 1627127
+    },
+    {
+      "id": "6a8db3cc-f421-4a1e-ae00-cfbedd58a330",
+      "action": "mint",
+      "status": "finalized",
+      "transactionId": "003317aad14b2e6b3d22aa7009efb983e64cac10338da59adb0cd8d0aa863ecf98",
+      "blockHash": "9407a12e00003676e932740e5d3cc72b9d353d1e937046358b58788c0e825b5d",
+      "blockHeight": 1627131
+    },
+    {
+      "id": "f096dd35-3d94-426e-be90-d60fdc740ca9",
+      "action": "deploy-vault",
+      "status": "finalized",
+      "transactionId": "0035a9ce587ea92a9ff7ee31799f1fa259df643c3514786d1aff1291f6015ec558",
+      "blockHash": "6358277a1d4df925e4ee49ec983b3e25734774465f94f01614e43e220819f03a",
+      "blockHeight": 1627134
+    },
+    {
+      "id": "6f70e540-f505-4dd4-b8cf-4a26cf51dcc4",
+      "action": "disable-maintenance",
+      "status": "finalized",
+      "transactionId": "009c7faefd10181cd6e60e0b48db43932381e9d0b67c75aa88e12313331cf0553e",
+      "blockHash": "1d03d4604df95b7671ce97ba1b6d8d3b2dac9758f1d14c1198f0dfdc7c910d7f",
+      "blockHeight": 1627137
+    },
+    {
+      "id": "96ee7eaf-36e5-4c26-82be-a4a7293eadf4",
+      "action": "initialize-policy",
+      "status": "finalized",
+      "transactionId": "00839c538a1beaf0ac4342884ab270490378dde83795d69cd7a026d1edffdd33a0",
+      "blockHash": "01498d8dcf84aecb1c0cb4ef50dacdac7ba42ef12f2c5674c27f172e93aa6c6e",
+      "blockHeight": 1627141
+    },
+    {
+      "id": "576c4cda-8c6b-41b0-8935-4a3e05b6575c",
+      "action": "fund",
+      "status": "finalized",
+      "transactionId": "00f91dec9a50645fadf172008bfe8746d00697f1ae42d39f042bef1be1b10ca1b0",
+      "blockHash": "954cabd517c6617792134807661862a90c58a117b5f8d3b09db10b2c4e539181",
+      "blockHeight": 1627145
+    },
+    {
+      "id": "81b40ef2-5c0e-423a-b137-7ca0c48d6aae",
+      "action": "agent-payment",
+      "status": "finalized",
+      "transactionId": "007ce1b47a31b92f377673ca49709c635db02d0a61b394114b16b6763c3275dd1c",
+      "blockHash": "63f63c884850a28579da12b38b4c50851dfa692a4d8ffe10d18493742f34a722"
+    },
+    {
+      "id": "cc82b546-8baf-41be-8093-f96f663fe90e",
+      "action": "agent-payment",
+      "status": "rejected"
+    },
+    {
+      "id": "cdc48200-73f6-414b-8749-428e8e8c9923",
+      "action": "owner-pause",
+      "status": "finalized",
+      "transactionId": "00ca95daaf7a069014d83d9356801e0c7871bd6ccca8f72d918f84fb18887a70b9",
+      "blockHash": "9c74880764476c251d78a468648e0215f6dbe710bfbdd133c6020e85f8b735a3",
+      "blockHeight": 1627196
+    },
+    {
+      "id": "17d60eeb-fc4d-4d76-8ead-ccf8de7662f1",
+      "action": "agent-payment",
+      "status": "rejected"
+    },
+    {
+      "id": "0b08a942-bcd0-4df9-a41a-4a4495237686",
+      "action": "owner-withdraw",
+      "status": "finalized",
+      "transactionId": "004918ae556a045d3c14d6a59a0970dd6cd2f0a6a6bd8341894d6a9dcaba0bf7cc",
+      "blockHash": "3130fc804bba8d7c7da9d73e3903db9f90a81f80c35dca651615e45a899f24e3",
+      "blockHeight": 1627207
+    }
+  ],
+  "verificationBoundary": "Selected observations from the authenticated local Preview runner and returned receipts, with deliberately public test-fixture amounts. The separate preview-payment.json inspects actual public transaction bytes. This record is not an OS process-kill, power-loss, paired-browser end-to-end or real AI-client test."
+}

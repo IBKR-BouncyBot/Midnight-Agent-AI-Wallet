@@ -76,6 +76,22 @@ the exact transaction has finalized successfully, the recipient wallet observes
 the balance, and the vault change output and generated commitments match. The
 bridge does not use public local-chain genesis seeds on Preview.
 
+After finality, a separate read-only helper can export public evidence without
+opening a wallet store or receiving the pairing token:
+
+```powershell
+node scripts/export-preview-evidence.mjs <transaction-id> <contract-address>
+```
+
+Supply the actual 66-character transaction ID and 64-character vault address.
+The helper queries only pinned Preview endpoints, reconstructs the actual native
+transaction, checks its IDs/hash, successful finality, `pay` entry point, proof
+bytes, matching shielded phase, and vault/recipient output effects. It prints
+proof sizes and hashes rather than raw transaction or transcript data. This
+public-only inspection cannot decrypt the merchant wallet's receipt; the paired
+runner's independent receipt check remains separate. It trusts the official
+RPC/indexer for chain observations and does not locally re-verify the proof.
+
 ## Restart and recovery
 
 Type `stop` and press Enter in the bridge terminal for a clean shutdown. Ctrl+C

@@ -1,21 +1,22 @@
 # Verification record — 6 November 2026
 
-The confidential-custody milestone passed on an isolated **local** Midnight ledger. No Preprod/Mainnet deployment, owner web application or live ChatGPT/Claude integration is claimed. The [acceptance matrix](acceptance-status.md) lists the remaining work.
+The confidential-custody milestone passed on an isolated **local** Midnight ledger, and the first real public **Preview** payment has now finalized with its merchant receipt and private vault change verified. The two-mode owner web app is published. No Preprod/Mainnet deployment or live ChatGPT/Claude integration is claimed. The [acceptance matrix](acceptance-status.md) lists the remaining work.
 
 ## Distinct gates
 
 | Gate | Measured result |
 | --- | --- |
 | Native compilation | Compact 0.31.1 generated contract JavaScript, ZKIR and full prover/verifier artifacts for all seven vault circuits and the test-token circuit. |
-| Generated runtime / on-chain VM | 32 tests passed, including limits, authority, replay, stale-state rejection, actual transcript partitioning and maintenance signatures. |
-| Protocol, storage and runner | 50 tests passed after candidate-binding and recovery-context review fixes. Mock adapter outcomes are explicitly test doubles. |
-| Full local unit/native command | Final `npm test`: 82 passed, zero failed/skipped. |
+| Generated runtime / on-chain VM | The original local milestone passed 32 tests, including limits, authority, replay, stale-state rejection, actual transcript partitioning and maintenance signatures. |
+| Protocol, storage and runner | The original local milestone passed 50 tests after candidate-binding and recovery-context review fixes. Mock adapter outcomes are explicitly test doubles. |
+| Full current unit/native command | Latest `npm test`: **102 passed**, zero failed/skipped, including the subsequent Preview/demo tests. The original local milestone passed 82. |
 | MCP subprocess | `node services/mcp/scripted-agent.mjs` passed its real stdio probe; payments unavailable, no model client or settlement exercised. |
 | Upstream proof/network baseline | Real `storeMessage` call finalized `SucceedEntirely`; resulting public state independently queried. [Raw record](evidence/upstream-smoke.json). |
 | Private vault proof/network | Funded, paid a separate merchant, rejected invalid qualification/overspend/replay, recovered change, and finalized owner withdrawal. All accepted transactions were `SucceedEntirely`. [Raw record](evidence/private-vault-local.json). |
 | Staged durable runner/network | Real SDK adapter submitted once, simulated a lost response, reopened encrypted state, reconciled actual finality/receipt/change, and returned the original receipt on retry. [Raw record and source hashes](evidence/durable-vault-local.json). |
+| Public Preview settlement | Real agent payment and owner withdrawal finalized; independent merchant and owner receipts account for the entire deposit. Retry, allowance rejection and pause enforcement also passed. A separate [public inspection](evidence/preview-payment.json) confirms the payment's successful finality, 4,508-byte proof and matching effects in one fallible segment. |
 | Privacy | Inspected finalized transaction, serialized contract state and actual fallible public transcript for 11 sampled secrets/keys and amount encodings; samples absent. One contract input, one recipient output and one contract change output matched the same segment. |
-| GitHub CI / publication | Workflow is configured separately from local evidence. See release summary for actual hosted run status. No frontend publication is configured. |
+| GitHub CI / publication | Commit `79b031d` passed [CI run 42258652447](https://github.com/IBKR-BouncyBot/Midnight-Agent-AI-Wallet/actions/runs/42258652447) and [Pages run 42258652640](https://github.com/IBKR-BouncyBot/Midnight-Agent-AI-Wallet/actions/runs/42258652640). These hosted results cover that commit, not subsequent changes or public payment execution. |
 
 The proof-provider counter includes deployment and maintenance operations; it is **not** a count of eight independent vault ZK proofs. A [separate read-only inspection](evidence/payment-proof-inspection.json) of the accepted payment found a nonempty **4,508-byte contract proof**. The node's acceptance of that call is distinct from compiler key generation or runtime execution.
 
@@ -91,7 +92,7 @@ overflow. A cramped panel heading found during mobile inspection was corrected.
 These are JavaScript simulation checks, not Compact proofs or network payments.
 
 The frontend syntax, local links, element IDs and content-security-policy checks
-pass. The complete test suite currently reports **99 passed**, including new
+pass. The complete test suite currently reports **102 passed**, including new
 HTTP pairing/origin/host/input boundaries, encrypted identity restoration,
 manifest migration and missing-file fail-closed behavior. The standalone static
 build includes only frontend files and the infographic.
@@ -101,11 +102,82 @@ wallet was saved under AES-GCM with Windows current-user DPAPI key protection.
 After the user requested faucet funds, a separate unshielded SDK observer
 reported a fully synchronized balance of `10000000000` atomic NIGHT units and
 two available coins at the same saved address. Reopening encrypted storage
-preserved that identity. These observations establish funding, not DUST
-registration or application settlement.
+preserved that identity. Subsequent DUST registration and contract setup enabled
+the actual public payment recorded below; the faucet balance alone was never
+treated as settlement evidence.
 
-At this record's current checkpoint, private wallet history synchronization is
-still running. Public DUST registration, vault deployment, agent payment and
-owner receipt verification have **not yet been recorded as passing**. The app
-does not substitute the earlier local-chain evidence for public Preview evidence.
-Use [the public demo guide](testnet-demo.md) for setup and recovery boundaries.
+The [two-mode app](https://ibkr-bouncybot.github.io/Midnight-Agent-AI-Wallet/) was
+published by successful Pages run 42258652640 for commit `79b031d`. The paired
+Preview browser flow has not yet been exercised end to end. The successful live
+payment below used the authenticated local bridge; it does not establish that
+browser pairing or a real AI client has been tested. Use
+[the public demo guide](testnet-demo.md) for setup and recovery boundaries.
+
+## Demonstrated public Preview payment
+
+The actual Preview runner reported the first agent payment as finalized, with
+`recipientReceiptVerified: true` and `vaultChangeVerified: true`. These checks
+wait for the independent merchant wallet's exact receipt and qualify the
+contract's private change from the finalized transaction.
+
+| Evidence | Value |
+| --- | --- |
+| Network | `preview` — public Midnight Preview |
+| Vault | `cc892e0ad1479b18621ba172195df419c9ddabf146c1bfbf12586a871fc5a792` |
+| Payment transaction | `007ce1b47a31b92f377673ca49709c635db02d0a61b394114b16b6763c3275dd1c` |
+| Finalized block height | `1627157` |
+| Finalized block hash | `63f63c884850a28579da12b38b4c50851dfa692a4d8ffe10d18493742f34a722` |
+
+Before funding, maintenance removal finalized in block 1627137 as
+`009c7faefd10181cd6e60e0b48db43932381e9d0b67c75aa88e12313331cf0553e`.
+The service checked an empty maintenance committee with threshold one before
+enabling the deposit, which finalized in block 1627145. The selected runner
+record retains that sequence; the public payment exporter has a narrower scope.
+
+| Funded | Merchant receipt / spent | Remaining private vault coin | Agent allowance | Per-payment ceiling |
+| ---: | ---: | ---: | ---: | ---: |
+| 100000000700 | 40000000280 | 60000000420 | 70000000490 | 50000000350 |
+
+Amounts are atomic units of the custom test token. This table records the state
+immediately after payment. The remaining private coin was subsequently withdrawn
+to the owner as recorded below.
+
+The separate [public Preview inspection](evidence/preview-payment.json) read the
+actual accepted `SucceedEntirely` transaction, measured its 24,735 serialized
+bytes and 4,508-byte contract proof, and matched the one vault input/nullifier,
+recipient output and vault change output to its sole `pay` call in fallible
+segment 63752. Its source hashes and exact verification boundary are retained.
+The public-only exporter does not perform the private recipient-wallet receipt
+check; that evidence comes from the live runner above. It also does not repeat
+the local fixture's secret/amount literal scans or independently reverify the
+proof locally.
+
+A retry with the original idempotency key returned the same finalized payment
+ID `81b40ef2-5c0e-423a-b137-7ca0c48d6aae` and transaction, with spent value
+`40000000280` and remaining balance `60000000420` unchanged. A second request
+for `40000000280` under a fresh key would exceed the `70000000490` cumulative
+allowance; it was rejected without a transaction and left both values unchanged.
+These are live bridge/gateway checks, not replay of a finalized proof on chain.
+
+Owner pause finalized as transaction
+`00ca95daaf7a069014d83d9356801e0c7871bd6ccca8f72d918f84fb18887a70b9`.
+Its block was 1627196, hash
+`9c74880764476c251d78a468648e0215f6dbe710bfbdd133c6020e85f8b735a3`.
+The runner reported `paused: true` with the same spent and remaining values;
+the independently synchronized merchant wallet still held `40000000280`.
+A new request for 100 atomic units while paused was rejected, again without
+changing those balances.
+
+Owner withdrawal succeeded while the agent was paused, as transaction
+`004918ae556a045d3c14d6a59a0970dd6cd2f0a6a6bd8341894d6a9dcaba0bf7cc`,
+block 1627207, hash
+`3130fc804bba8d7c7da9d73e3903db9f90a81f80c35dca651615e45a899f24e3`.
+The service waited for the independent owner wallet's exact `60000000420`
+receipt before reporting completion. The merchant retained `40000000280`; these
+receipts sum to the original `100000000700` deposit. Final vault balance was zero,
+spent remained `40000000280`, with `paused: true` and `revoked: false`. Selected live
+receipts, retry/rejection results and public activity are retained in
+[the runner evidence](evidence/preview-runner.json).
+
+Public resume/revoke, process-kill/power-loss recovery, paired browser execution
+and live ChatGPT/Claude clients remain untested.
