@@ -374,20 +374,29 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     metadata.bootstrapProgress.previewSelected = true; await persist();
     await uiStep('open-midnight-proving-settings', async () => (await findSettingsItem('option-list-item-midnight')).click());
     const radio = wallet.getByTestId('proof-server-in-process-radio');
-    await uiStep('select-in-app-wasm', async () => {
-      await radio.click();
-      requireThat(await visible(wallet.getByText('Run in this app (WASM)', { exact: true })), 'WASM_SETTING_LABEL_MISSING');
-    });
-    await uiStep('save-in-app-wasm', async () => {
-      await wallet.getByTestId('save-configuration-button').click();
-      // In-process has no delegated-provider disclosure. If one appears, stop.
-      await wallet.getByTestId('midnight-settings-sheet-header').waitFor({ state: 'hidden', timeout: 30_000 });
-    });
-    await uiStep('reopen-wasm-settings', async () => (await findSettingsItem('option-list-item-midnight')).click());
-    await stage('verify-persisted-wasm-selection');
-    const checked = await radio.evaluate(el => el.getAttribute('aria-selected') === 'true' || el.getAttribute('aria-checked') === 'true'
+    const selected = async () => await radio.evaluate(el => el.getAttribute('aria-selected') === 'true' || el.getAttribute('aria-checked') === 'true'
       || el.querySelector('[aria-checked="true"]') !== null || el.querySelector('input:checked') !== null)
       || await visible(wallet.getByTestId('proof-server-in-process-radio-checkmark'));
+    await uiStep('inspect-current-wasm-selection', () => radio.waitFor({ state:'visible' }));
+    requireThat(await visible(wallet.getByText('Run in this app (WASM)', { exact: true })), 'WASM_SETTING_LABEL_MISSING');
+    if (await selected()) {
+      await uiStep('leave-existing-wasm-setting-unchanged', async () => {
+        await wallet.goto(`chrome-extension://${EXTENSION_ID}/expo/index.html`);
+        await wallet.getByTestId('midnight-settings-sheet-header').waitFor({ state:'hidden' });
+        await wallet.getByTestId('settings-tab-btn').click();
+      });
+    } else {
+      await uiStep('select-in-app-wasm', () => radio.click());
+      await uiStep('save-in-app-wasm', async () => {
+        await wallet.getByTestId('save-configuration-button').click();
+        // In-process has no delegated-provider disclosure. If one appears, stop.
+        await wallet.getByTestId('midnight-settings-sheet-header').waitFor({ state: 'hidden', timeout: 30_000 });
+      });
+    }
+    await uiStep('reopen-wasm-settings', async () => (await findSettingsItem('option-list-item-midnight')).click());
+    await stage('verify-persisted-wasm-selection');
+    await radio.waitFor({ state:'visible' });
+    const checked = await selected();
     requireThat(checked, 'WASM_SELECTION_NOT_PERSISTED');
     report.provingSetting = { label: 'Run in this app (WASM)', selectedInRealUi: true, persistedOnReopen: true };
     metadata.bootstrapProgress.wasmSelected = true; await persist();
