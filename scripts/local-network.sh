@@ -11,7 +11,8 @@ else
 fi
 case "${1:-status}" in
   up) "${compose[@]}" -f compose.yaml up -d --wait ;;
+  prover) "${compose[@]}" -f compose.yaml up -d --wait proof-server ;;
   status) "${compose[@]}" -f compose.yaml ps ;;
   stop) "${compose[@]}" -f compose.yaml stop ;;
-  *) printf '%s\n' 'Usage: scripts/local-network.sh {up|status|stop}' >&2; exit 2 ;;
+  *) printf '%s\n' 'Usage: scripts/local-network.sh {up|prover|status|stop}' >&2; exit 2 ;;
 esac

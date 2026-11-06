@@ -41,7 +41,7 @@ export class PaymentRunner {
   constructor({ store, adapter, scope, vaultId, now = Date.now }) {
     if (!store || !adapter || !['prepare', 'proveAndBalance', 'submit', 'observe', 'verifyConfirmed', 'verifyCoinQualification']
       .every((name) => typeof adapter[name] === 'function')) throw new TypeError('A complete staged adapter is required');
-    if (!['local', 'preprod'].includes(scope?.network) || typeof scope.contractAddress !== 'string'
+    if (!['local', 'preview', 'preprod'].includes(scope?.network) || typeof scope.contractAddress !== 'string'
       || !hex.test(scope.contractAddress) || typeof vaultId !== 'string' || !hex.test(vaultId)
       || !['subject', 'agentRef', 'vaultRef'].every((key) => typeof scope[key] === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(scope[key]))) {
       throw new TypeError('Explicit test-network runner scope required');

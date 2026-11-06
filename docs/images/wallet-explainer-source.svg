@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="960" viewBox="0 0 1440 960" role="img" aria-labelledby="title description">
+  <title id="title">Midnight Agent AI Wallet — how a private agent allowance works</title>
+  <desc id="description">The owner funds a shielded vault and sets a private policy. An agent requests a payment. A Compact contract checks authority, recipient, asset, expiry, per-payment limit and remaining allowance. A valid proof moves shielded coins; a finalized network receipt confirms the result. The browser demo simulates this flow; the public Preview demo uses real test-network transactions.</desc>
+  <defs>
+    <style>
+      text{font-family:Outfit,Arial,sans-serif;fill:#fff} .eyebrow{font-size:15px;letter-spacing:2px} .muted{fill:#c1c1c1} .body{font-size:22px} .small{font-size:18px} .number{font-size:18px;fill:#aaa} .heading{font-size:32px;letter-spacing:-.6px} .rule{stroke:#303030;stroke-width:1} .outline{fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1 8 5 1 9" fill="none" stroke="#fff" stroke-width="1.4"/></marker>
+  </defs>
+  <rect width="1440" height="960" fill="#0a0a0a"/>
+  <text x="56" y="54" class="eyebrow">MIDNIGHT / AGENT AI WALLET</text>
+  <text x="1384" y="54" class="eyebrow muted" text-anchor="end">PRIVATE RULES. BOUNDED SPENDING.</text>
+  <path d="M56 78H1384" class="rule"/>
+  <text x="56" y="148" font-size="56" letter-spacing="-1.6">Give your agent an allowance.</text>
+  <text x="56" y="205" font-size="56" letter-spacing="-1.6">Keep control of the rules.</text>
+  <text x="56" y="251" class="body muted">A shielded vault checks each request before any coins can move.</text>
+
+  <rect x="56" y="297" width="410" height="296" rx="4" fill="#101010" stroke="#303030"/>
+  <text x="84" y="335" class="number">01 / OWNER</text>
+  <g transform="translate(390 318)" class="outline"><rect x="0" y="10" width="42" height="31" rx="3"/><path d="M5 10V4H35V10M29 24H42"/></g>
+  <text x="84" y="388" class="heading">Set the boundaries.</text>
+  <text x="84" y="433" class="body muted">Fund once with test tokens.</text>
+  <text x="84" y="467" class="body muted">Choose recipients and limits.</text>
+  <text x="84" y="501" class="body muted">Set an expiry for the agent.</text>
+  <path d="M84 531H438" class="rule"/>
+  <text x="84" y="566" class="small">Owner can pause, revoke or withdraw.</text>
+
+  <rect x="514" y="297" width="412" height="296" rx="4" fill="#0000fe"/>
+  <text x="542" y="335" class="eyebrow">02 / PRIVATE VAULT</text>
+  <g transform="translate(849 315)" class="outline"><path d="M4 4 22 0 40 4V22C40 34 22 43 22 43S4 34 4 22Z"/><path d="m14 21 6 6 12-14"/></g>
+  <text x="542" y="388" class="heading">Prove the rules hold.</text>
+  <text x="542" y="433" class="body">Authority · recipient · asset</text>
+  <text x="542" y="467" class="body">Expiry · payment limit</text>
+  <text x="542" y="501" class="body">Remaining lifetime allowance</text>
+  <path d="M542 531H898" stroke="#6868ff"/>
+  <text x="542" y="566" class="small">Compact checks and transfers atomically.</text>
+
+  <rect x="974" y="297" width="410" height="296" rx="4" fill="#101010" stroke="#303030"/>
+  <text x="1002" y="335" class="number">03 / AGENT</text>
+  <g transform="translate(1305 318)" class="outline"><rect x="0" y="10" width="42" height="31" rx="3"/><path d="M21 0V10M12 22H13M29 22H30M12 32H30"/></g>
+  <text x="1002" y="388" class="heading">Request a payment.</text>
+  <text x="1002" y="433" class="body muted">Name an approved recipient.</text>
+  <text x="1002" y="467" class="body muted">Specify the amount.</text>
+  <text x="1002" y="501" class="body muted">Reuse the ID to check the result.</text>
+  <path d="M1002 531H1356" class="rule"/>
+  <text x="1002" y="566" class="small">The agent does not get the owner's keys.</text>
+  <path d="M474 444H503" stroke="#fff" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M964 444H937" stroke="#fff" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <path d="M720 594V630" stroke="#fff" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="56" y="641" width="1328" height="104" rx="4" fill="#181818" stroke="#303030"/>
+  <text x="84" y="680" class="eyebrow">REAL NETWORK PATH</text>
+  <text x="84" y="718" font-size="26">Request</text>
+  <path d="M195 709H249" stroke="#fff" marker-end="url(#arrow)"/>
+  <text x="271" y="718" font-size="26">Generate proof</text>
+  <path d="M467 709H521" stroke="#fff" marker-end="url(#arrow)"/>
+  <text x="543" y="718" font-size="26">Sign + submit</text>
+  <path d="M726 709H780" stroke="#fff" marker-end="url(#arrow)"/>
+  <text x="802" y="718" font-size="26">Wait for finality</text>
+  <path d="M1008 709H1062" stroke="#fff" marker-end="url(#arrow)"/>
+  <text x="1084" y="718" font-size="26">Verify the receipt</text>
+
+  <text x="56" y="795" class="eyebrow">TWO WAYS TO TRY IT</text>
+  <text x="56" y="834" font-size="27">Browser demo</text>
+  <text x="56" y="864" class="small muted">Explore the rules. Simulated balances and receipts.</text>
+  <text x="748" y="834" font-size="27">Public testnet</text>
+  <text x="748" y="864" class="small muted">Use Preview, a wallet and a prover. Test tokens only.</text>
+  <path d="M56 891H1384" class="rule"/>
+  <text x="56" y="925" font-size="16" class="muted">Privacy is bounded: the runner and prover see witnesses; the network sees calls, timing and commitments.</text>
+  <text x="1384" y="925" font-size="16" class="muted" text-anchor="end">Research prototype</text>
+</svg>

@@ -1,4 +1,4 @@
-export type Network = 'local' | 'preprod';
+export type Network = 'local' | 'preview' | 'preprod';
 export type PaymentStatus = 'requested' | 'prepared' | 'proving' | 'submitted' | 'finalized' | 'rejected' | 'unresolved';
 export interface PaymentRequest {
   vaultRef: string; recipientRef: string; tokenId: string; amount: string;

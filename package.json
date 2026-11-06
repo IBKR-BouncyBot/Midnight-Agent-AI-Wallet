@@ -1,17 +1,21 @@
 {
   "name": "midnight-agent-ai-wallet",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Local testnet feasibility work for a confidential agent payment vault",
+  "description": "Confidential agent vault with browser and public Preview demos",
   "engines": {
     "node": ">=24.18.0 <25"
   },
   "scripts": {
+    "dev": "node scripts/serve-web.mjs",
+    "build:web": "node scripts/build-web.mjs",
+    "check:web": "node scripts/check-web.mjs",
+    "demo:testnet": "node services/demo/server.mjs",
     "compile": "node scripts/compile.mjs",
     "compile:fast": "node scripts/compile.mjs --skip-zk",
     "test": "node --test tests/*.test.mjs",
-    "test:unit": "node --test tests/protocol.test.mjs tests/private-store.test.mjs tests/runner.test.mjs",
+    "test:unit": "node --test tests/protocol.test.mjs tests/private-store.test.mjs tests/runner.test.mjs tests/demo-*.test.mjs tests/test-network-config.test.mjs",
     "test:native": "node --test tests/native-*.test.mjs",
     "test:network": "node tests/network/private-vault.mjs",
     "test:network:durable": "node tests/network/durable-vault.mjs",

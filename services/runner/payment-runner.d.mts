@@ -1,6 +1,6 @@
 import type { AgentScope, BackendReceipt, PaymentBackend, PaymentRequest, SettlementEvidence } from '../../packages/protocol/index.mjs';
 
-export interface DeploymentContext { network: 'local' | 'preprod'; contractAddress: string; vaultId: string }
+export interface DeploymentContext { network: 'local' | 'preview' | 'preprod'; contractAddress: string; vaultId: string }
 export interface RunnerInput { scope: AgentScope; request: PaymentRequest; fingerprint: string; paymentId: string }
 export interface PendingPayment<C = unknown> extends RunnerInput {
   phase: 'requested' | 'prepared' | 'proving' | 'signed' | 'submitting' | 'submitted' | 'unresolved';

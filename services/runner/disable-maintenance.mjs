@@ -9,7 +9,9 @@ import { submitTx } from '@midnight-ntwrk/midnight-js-contracts';
 /** Construct the ledger-native equivalent of an irreversible authority removal.
  * SDK 4.1.1's submitReplaceAuthorityTx(undefined) generates a new key instead.
  * Ledger 8 documents threshold > committee size as an impossible authority.
- * This bootstrap helper is deliberately restricted to disposable local tests.
+ * The caller must explicitly select Preview; mainnet and implicit network
+ * changes are rejected. Only an independently verified unfunded deployment is
+ * eligible, and the deployment key is retained until chain confirmation.
  */
 export function createDisableMaintenanceUpdate(address, authority, signingKey) {
   assert.equal(authority.committee.length, 1, 'Expected default single-member deployment authority');
@@ -21,8 +23,9 @@ export function createDisableMaintenanceUpdate(address, authority, signingKey) {
   return unsigned.addSignature(0n, signData(signingKey, unsigned.dataToSign));
 }
 
-export async function disableMaintenanceBeforeFunding(providers, address, isUnfunded) {
-  assert.equal(getNetworkId(), 'undeployed', 'Maintenance bootstrap is local-test only');
+export async function disableMaintenanceBeforeFunding(providers, address, isUnfunded, { networkId = 'undeployed' } = {}) {
+  assert.ok(['undeployed', 'preview'].includes(networkId), 'Maintenance bootstrap requires an explicitly supported test network');
+  assert.equal(getNetworkId(), networkId, 'Maintenance bootstrap network differs from configured SDK network');
   assert.equal(typeof isUnfunded, 'function', 'An unfunded-state verifier is required');
   const initial = await providers.publicDataProvider.queryContractState(address);
   assert.ok(initial, 'Contract not found');
@@ -33,7 +36,8 @@ export async function disableMaintenanceBeforeFunding(providers, address, isUnfu
   assert.ok(signingKey, 'Deployment signing key unavailable');
   const update = createDisableMaintenanceUpdate(address, current, signingKey);
   const intent = Intent.new(new Date(Date.now() + 3_600_000)).addMaintenanceUpdate(update);
-  const tx = Transaction.fromParts('undeployed', undefined, undefined, intent);
+  assert.equal(getNetworkId(), networkId, 'Maintenance bootstrap network changed during preparation');
+  const tx = Transaction.fromParts(networkId, undefined, undefined, intent);
   const result = await submitTx(providers, { unprovenTx: tx });
   assert.equal(result.status, 'SucceedEntirely', 'Authority removal did not succeed entirely');
   const confirmed = await providers.publicDataProvider.queryContractState(address);

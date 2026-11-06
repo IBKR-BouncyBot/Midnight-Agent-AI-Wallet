@@ -21,6 +21,8 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run test:unit
+      - run: npm run check:web
+      - run: npm run build:web
       - run: node services/mcp/scripted-agent.mjs
   native-runtime:
     runs-on: ubuntu-24.04

@@ -40,7 +40,7 @@ export class PaymentGateway {
   async #scope(credential) {
     let scope;
     try { scope = await this.#authenticate(credential); } catch { throw new WalletError('NOT_AUTHORIZED'); }
-    if (!scope || !['local', 'preprod'].includes(scope.network)
+    if (!scope || !['local', 'preview', 'preprod'].includes(scope.network)
         || typeof scope.contractAddress !== 'string' || !hex32.test(scope.contractAddress)
         || !['subject', 'vaultRef', 'agentRef'].every((key) => typeof scope[key] === 'string' && id.test(scope[key]))
         || !Number.isSafeInteger(scope.expiresAt) || scope.expiresAt <= this.#now()) {

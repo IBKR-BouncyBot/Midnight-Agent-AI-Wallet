@@ -25,7 +25,7 @@ const decode = ([tag, value]) => {
   }
 };
 function contextId(context) {
-  if (!context || !['local', 'preprod'].includes(context.network)
+  if (!context || !['local', 'preview', 'preprod'].includes(context.network)
       || typeof context.contractAddress !== 'string' || !/^[0-9a-f]{64}$/.test(context.contractAddress)
       || typeof context.vaultId !== 'string' || !/^[0-9a-f]{64}$/.test(context.vaultId))
     throw new TypeError('Explicit test-network deployment context required');

@@ -31,9 +31,11 @@ separately in the network verification record; it must not be inferred from
 these native tests.
 
 There is a temporary deployer maintenance authority between deployment and
-removal, while the vault is unfunded. The helper refuses a funded vault and is
-restricted to the disposable local network. Production maintenance and migration
-policy require a separate decision. The SDK method
+removal, while the vault is unfunded. The helper refuses a funded vault and accepts
+the local network or an explicitly selected Preview network. Mainnet is rejected.
+The deployment service must serialize setup and prohibit funding until this check
+completes; the preliminary unfunded query itself is not an atomic ledger lock.
+Production maintenance and migration policy require a separate decision. The SDK method
 `submitReplaceAuthorityTx(undefined)` is deliberately not used: in 4.1.1 it
 generates a fresh authority instead of removing one.
 

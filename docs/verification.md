@@ -73,4 +73,39 @@ Source SHA-256 at the successful custody run:
 
 Initial setup failures were investigated rather than counted as passes: the compiler installer/wrapper mishandled spaces; a fast compile removed proving keys; shared/short-lived services interrupted early runs; and the inherited coin-qualification assumption searched only guaranteed outputs. Project-local tools, isolated services and a fail-closed single-segment resolver addressed these issues. The first funded test vault was left with disposable test assets when its ephemeral harness state was discarded; that failed run does not demonstrate recovery.
 
-No credentials, private openings, wallet seeds or generated proving keys are included in the evidence files. Application development, live AI clients, owner UI, production recovery and Preprod are unfinished.
+No credentials, private openings, wallet seeds or generated proving keys are included in the evidence files. Live AI clients, production recovery and Preprod remain unfinished.
+
+## Two-mode app and public Preview integration
+
+The v0.2 app adds a two-choice landing page, browser policy simulation and a
+five-screen public Preview interface backed by an authenticated local runner.
+The shared Ballot Lab CSS and Outfit files retain their source licenses. The
+README infographic was rendered and visually checked; its SVG contains outlined
+Outfit letterforms and has an editable text source.
+
+Browser checks exercised creation of a 100-unit practice vault with a 70-unit
+allowance and 50-unit ceiling, a successful simulated 40-unit payment, a rejected
+second 40-unit request with the balance unchanged, and owner pause rejection.
+The landing page was checked at 390px width with stacked choices and no horizontal
+overflow. A cramped panel heading found during mobile inspection was corrected.
+These are JavaScript simulation checks, not Compact proofs or network payments.
+
+The frontend syntax, local links, element IDs and content-security-policy checks
+pass. The complete test suite currently reports **99 passed**, including new
+HTTP pairing/origin/host/input boundaries, encrypted identity restoration,
+manifest migration and missing-file fail-closed behavior. The standalone static
+build includes only frontend files and the infographic.
+
+The real Preview RPC identified itself as `Midnight Preview`. A fresh random
+wallet was saved under AES-GCM with Windows current-user DPAPI key protection.
+After the user requested faucet funds, a separate unshielded SDK observer
+reported a fully synchronized balance of `10000000000` atomic NIGHT units and
+two available coins at the same saved address. Reopening encrypted storage
+preserved that identity. These observations establish funding, not DUST
+registration or application settlement.
+
+At this record's current checkpoint, private wallet history synchronization is
+still running. Public DUST registration, vault deployment, agent payment and
+owner receipt verification have **not yet been recorded as passing**. The app
+does not substitute the earlier local-chain evidence for public Preview evidence.
+Use [the public demo guide](testnet-demo.md) for setup and recovery boundaries.

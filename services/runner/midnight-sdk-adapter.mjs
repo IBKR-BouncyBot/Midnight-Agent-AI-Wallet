@@ -12,7 +12,7 @@ import { Transaction } from '@midnight-ntwrk/midnight-js-protocol/ledger';
  */
 export function createMidnightSdkAdapter({ providers, compiledContract, networkId,
   buildPaymentCall, captureCandidate, verifyConfirmed, verifyCoinQualification, observeTransaction, transactionTtl, proofTimeoutMs = 180_000 }) {
-  if (!['undeployed', 'preprod'].includes(networkId)
+  if (!['undeployed', 'preview', 'preprod'].includes(networkId)
       || ![buildPaymentCall, captureCandidate, verifyConfirmed, verifyCoinQualification, observeTransaction, transactionTtl].every((fn) => typeof fn === 'function')
       || !Number.isSafeInteger(proofTimeoutMs) || proofTimeoutMs < 1) throw new TypeError('Complete trusted SDK configuration required');
   const assertNetwork = () => {

@@ -1,0 +1,121 @@
+/* Testnet palette and scoped navigation/activity layout. Load after the shared
+   styles. White text stays readable on Midnight blue and dark surfaces. */
+.network-page {
+  --black: #0a0a0a;
+  --white: #fff;
+  --blue: #0000fe;
+  --blue-light: #fff;
+  --surface: #101010;
+  --surface-raised: #181818;
+  --surface-soft: #202020;
+  --line: #303030;
+  --line-light: #666;
+  --muted: #c1c1c1;
+  --subtle: #aaa;
+  background: var(--black);
+  color: var(--white);
+  accent-color: var(--blue);
+}
+.network-page ::selection { background: var(--blue); color: var(--white); }
+.network-page :focus-visible { outline-color: var(--white); }
+.network-page .eyebrow-dot,
+.network-page .status-dot { background: var(--blue); box-shadow: none; }
+.network-page .strip-divider { color: var(--subtle); }
+.network-page .hero h1 em,
+.network-page .text-button,
+.network-page .support-panel .support-status { color: var(--white); }
+
+/* Primary actions keep the exact electric blue, including hover and mode
+   selection; neutral secondary controls remain distinct. */
+.network-page .button.primary,
+.network-page .button.primary:hover:not(:disabled),
+.network-page .masthead-links a:last-child,
+.network-page .masthead-links a:last-child:hover {
+  background: var(--blue); color: var(--white); box-shadow: none;
+}
+.network-page .button.primary:hover:not(:disabled),
+.network-page .masthead-links a:last-child:hover { border-color: var(--white); }
+.network-page .button.secondary { background: transparent; border-color: var(--line-light); color: var(--white); }
+.network-page .button.secondary:hover:not(:disabled) { background: var(--surface-soft); border-color: var(--white); }
+.network-page .election-setup-options .button,
+.network-page .election-setup-options .button:hover:not(:disabled) {
+  background: var(--blue); border-color: var(--blue); color: var(--white); box-shadow: none;
+}
+.network-page .election-setup-options .button:hover:not(:disabled) { border-color: var(--white); }
+.network-page .election-setup-options .button[aria-pressed="true"],
+.network-page .election-setup-options .button[aria-pressed="true"]:hover {
+  border-color: var(--white); box-shadow: inset 0 -4px var(--white);
+}
+.network-page .panel input,
+.network-page .panel select,
+.network-page .panel textarea { background-color: var(--surface-raised); border-color: var(--line-light); color: var(--white); }
+.network-page .panel input::placeholder,
+.network-page .panel textarea::placeholder { color: #b5b5b5; }
+.network-page .panel select option { background: var(--surface-raised); color: var(--white); }
+.network-page .panel select option:checked { background: var(--blue); color: var(--white); }
+.network-page input::file-selector-button { background: var(--blue); border-color: var(--blue); color: var(--white); }
+.network-page input::file-selector-button:hover { border-color: var(--white); }
+
+/* The strongest checked/disabled rules override shared card highlights without
+   changing which controls are enabled, selected or visible. */
+.network-page .selection-card { background: var(--surface-raised); border-color: var(--line-light); }
+.network-page .selection-card input { accent-color: var(--blue); }
+.network-page .selection-card:hover:not(:has(input:disabled)) { background: var(--surface-soft); border-color: var(--white); }
+.network-page .selection-card:has(input:checked),
+.network-page .selection-card:has(input:checked):has(input:disabled) {
+  background: var(--surface-soft); border-color: var(--white); box-shadow: inset 3px 0 var(--blue);
+}
+.network-page .selection-card:has(input:checked) .selection-copy strong { color: var(--white); }
+.network-page .selection-card:has(input:focus-visible) { outline-color: var(--white); }
+
+/* Guidance and receipt details use neutral surfaces. Blue is an accent rather
+   than small text on black; success green and failure red remain untouched. */
+.network-page .public-network-intro {
+  background: #141414; border-color: var(--line-light); border-left-color: var(--blue); color: #d0d0d0;
+}
+.network-page .public-network-intro a,
+.network-page #network-service-settings summary,
+.network-page #network-receipt-panel summary { color: var(--white); }
+.network-page .vote-next-steps { background: #151515; border-color: var(--line-light); }
+.network-page .vote-next-steps h3 { color: var(--white); }
+.network-page .vote-next-steps p { color: #d0d0d0; }
+.network-page .receipt-panel { border-color: var(--line-light); }
+.network-page .receipt-qr { background: var(--white); color: var(--black); border-color: #ddd; }
+.network-page .fingerprint { background: #1a1a1a; border-color: #353535; color: #d0d0d0; }
+.network-page .record-panel { background: var(--black); border-color: var(--line-light); }
+.network-page .record-title .status-dot { box-shadow: none; }
+.network-page .global-status:not(.error) { background: var(--surface-raised); border-color: var(--line-light); color: #ddd; }
+.network-page .global-status.working:not(.error) { border-left-color: var(--blue); }
+.network-page .global-status.working::before { border-color: #666; border-top-color: var(--white); }
+
+.network-page .network-steps { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.network-page .step-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--line); }
+.network-page .step-actions .field-note { flex: 1 1 220px; margin: 0; }
+.network-page .step-actions .button { max-width: 100%; white-space: normal; }
+.network-page .work-main > .global-status { margin: 0 0 18px; }
+.network-page [data-network-panel] [id] { scroll-margin-top: 24px; }
+@media (max-width: 1200px) {
+  .network-page .network-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .network-page .network-steps .step:last-child { grid-column: 1 / -1; }
+}
+.network-page .work-main h2[tabindex="-1"] { scroll-margin-top: 24px; }
+.network-page .election-timing { border-block: 1px solid var(--line); padding: 20px 0; margin-bottom: 24px; }
+.network-page .election-timing h3 { margin: 0 0 12px; font-size: 15px; font-weight: 500; color: var(--muted); }
+.network-page .election-phase { margin: 0 0 10px; color: var(--white); font-size: 21px; line-height: 1.3; }
+.network-page .election-countdown { margin: 0 0 18px; padding-left: 12px; border-left: 3px solid var(--blue); font-size: 22px; line-height: 1.35; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.network-page .election-schedule { display: grid; gap: 12px; margin: 0 0 18px; }
+.network-page .election-schedule dt { color: var(--muted); font-size: 12px; }
+.network-page .election-schedule dd { margin: 4px 0 0; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.network-page .election-timing .field-note { margin: 12px 0; font-size: 12px; line-height: 1.6; }
+.network-page .election-timing .text-button { font-size: 13px; line-height: 1.5; }
+.network-page .election-backup,
+.network-page .voting-readiness { margin-top: 24px; padding: 20px; border: 1px solid var(--line-light); border-left: 3px solid var(--blue); background: var(--surface); }
+.network-page .election-backup h3,
+.network-page .voting-readiness h3 { margin: 0 0 12px; font-size: 20px; }
+.network-page .voting-readiness { margin: 0 0 28px; }
+.network-page .voting-readiness p { line-height: 1.6; }
+.network-page .saved-record-check { margin: 28px 0; padding: 20px; border: 1px solid var(--line-light); border-left: 3px solid var(--blue); background: var(--surface); }
+.network-page .saved-record-check h3 { margin: 0 0 12px; font-size: 20px; }
+.network-page .uploaded-record-details { display: grid; gap: 14px; }
+.network-page .uploaded-record-details dt { color: var(--muted); font-size: 13px; }
+.network-page .uploaded-record-details dd { margin: 4px 0 0; overflow-wrap: anywhere; }

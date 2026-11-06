@@ -6,6 +6,7 @@ node_modules/
 !.env.example
 contracts/managed/
 coverage/
+dist/
 *.log
 *.tsbuildinfo
 

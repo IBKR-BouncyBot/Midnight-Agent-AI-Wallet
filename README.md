@@ -2,7 +2,28 @@
 
 A confidential, contract-controlled allowance for an AI agent on Midnight. The agent proposes a payment through a provider-neutral API; Compact checks authority, recipient, asset, expiry, per-payment limit and cumulative allowance before moving the vault's shielded coins.
 
-This repository currently contains the **local feasibility implementation**. Read [the verification record](docs/verification.md) for measured results and remaining work. Compilation, native execution, actual proofs, local settlement and Preprod settlement are separate checks.
+![How Midnight Agent AI Wallet works: the owner sets private limits, the agent requests a payment, and the vault checks the rules before a verified network receipt.](docs/images/wallet-explainer.svg)
+
+## Choose your demo
+
+### [Open the app →](https://ibkr-bouncybot.github.io/Midnight-Agent-AI-Wallet/)
+
+The front page offers two paths in the same black, white and blue visual language as [Midnight Ballot Lab](https://ibkr-bouncybot.github.io/Midnight-BallotLab/).
+
+| Mode | What you can try | What you need |
+| --- | --- | --- |
+| [**Browser demo**](https://ibkr-bouncybot.github.io/Midnight-Agent-AI-Wallet/browser.html) | Set an allowance, request payments, inspect rejections, and try the owner controls. Balances and receipts are explicitly simulated. | A browser. No wallet, tokens or network transaction. |
+| [**Public testnet demo**](https://ibkr-bouncybot.github.io/Midnight-Agent-AI-Wallet/testnet.html) | Use an encrypted local runner, a real Compact vault, proofs and transactions on Midnight **Preview**. | Node 24, compiled contracts, a local proof server, free Preview test NIGHT and usable DUST. |
+
+```sh
+npm ci --ignore-scripts
+npm run dev
+# Open http://127.0.0.1:17640/
+```
+
+The public-testnet page connects to the runner on your own computer. It never asks you to paste a wallet seed. The runner uses its own fresh test wallets and keeps their state locally; the static website does not hold keys or run a prover. Preview funding is a separate step through the official faucet. See [testnet setup](docs/testnet-demo.md).
+
+Read [the verification record](docs/verification.md) for measured results and remaining work. Browser simulation, native execution, proof generation, local settlement and public Preview settlement are separate checks. A working connection is not a settled payment.
 
 ## Included
 
@@ -12,8 +33,9 @@ This repository currently contains the **local feasibility implementation**. Rea
 - Local ledger/prover/indexer harness with independently observed recipient balances, private coin qualification and change recovery.
 - Encrypted private snapshots, request journal and staged transaction runner; scoped provider-neutral payment schemas and an inspection-only MCP stdio endpoint.
 - Current ChatGPT and Claude connection guidance, exact toolchain pins, CI and recovery documentation.
+- Ballot Lab–styled two-mode frontend, a browser policy demo, and a local Preview transaction runner.
 
-The executable MCP endpoint is currently inspection-only. An operational local service with owner web interface, authenticated remote MCP endpoint, Preprod validation and live ChatGPT/Claude payment tests remain development work. The runner library requires deployment-specific chain and recipient observers before it can serve payments. No browser demonstration is represented as a settled payment. No mainnet funds are used.
+The executable MCP endpoint is currently inspection-only. Authenticated remote MCP, Preprod validation and live ChatGPT/Claude payment tests remain development work. The app's agent request screen lets you exercise the payment boundary; it is not a connected AI model. No mainnet funds are used.
 
 ## Run
 
@@ -42,7 +64,7 @@ Generated keys go in `contracts/managed/`; local private state goes in `.local/`
 
 One deployed vault currently supports one agent, one asset, four recipient slots and one lifetime deposit. Monetary values are decimal atomic units bounded to uint64. There are no currency conversion, recurring reset or top-up semantics. The owner chooses policy; the agent never receives owner wallet credentials.
 
-The local deployment test disables the SDK-generated maintenance authority before funding and verifies the ledger result. Owner policy administration remains part of the immutable circuit rules. Any deployment path that omits the maintenance step retains a key able to replace those rules; it must not be advertised as immutable.
+The deployment flow disables the SDK-generated maintenance authority before funding and verifies the ledger result. Owner policy administration remains part of the immutable circuit rules. Any deployment path that omits the maintenance step retains a key able to replace those rules; it must not be advertised as immutable.
 
 The runner and local prover see witnesses. Chain observers can see contract calls, timing, commitments, nullifiers, administrative flags and request validity windows. The model sees the payment it proposes. Recovery requires application-specific private openings as well as wallet material.
 
@@ -56,4 +78,6 @@ The runner and local prover see witnesses. Chain observers can see contract call
 - [Implementation plan](docs/implementation-plan.md)
 - [Dependency review](docs/dependencies.md)
 
-CI defines independent protocol/storage, native-runtime, and manually selected local proof/settlement jobs. Frontend publication is not configured. See [third-party notices](THIRD_PARTY_NOTICES.md) for upstream licenses.
+CI separates protocol/storage, native-runtime, static frontend publication, and manually selected local proof/settlement jobs. GitHub Pages hosts only the frontend. See [third-party notices](THIRD_PARTY_NOTICES.md) for upstream licenses.
+
+The README infographic is a standalone SVG with the Outfit letterforms embedded as paths. Its [editable source](docs/images/wallet-explainer-source.svg) and [generation script](scripts/outline-infographic.py) are included.
