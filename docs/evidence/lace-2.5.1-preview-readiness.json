@@ -1,0 +1,280 @@
+{
+  "schema": "midnight-agent-wallet-lace-preview-readiness-v1",
+  "network": "preview",
+  "status": "blocked-before-transactions",
+  "fullBrowserLacePaymentVerified": false,
+  "appTransactionsSubmitted": 0,
+  "dustDesignationSubmitted": false,
+  "extension": {
+    "version": "2.5.1",
+    "id": "gafhhkghbfjjkeiendhlofajokpaflmk",
+    "crxSha256": "bff973f7c741ccdbf91c4a1125d4d6da8e9a0b2384b6b1f51c6898b24c87e055",
+    "archiveSha256": "aa6d59550362a3bbcbef343dffd783621150a7971307116bb11fe0d94b754708",
+    "developerSignatureVerified": true,
+    "webStorePublisherSignatureVerified": true,
+    "extensionModified": false,
+    "mockedWallet": false,
+    "storeUrl": "https://chromewebstore.google.com/detail/lace/gafhhkghbfjjkeiendhlofajokpaflmk"
+  },
+  "setup": {
+    "runId": "42284877368",
+    "url": "https://github.com/IBKR-BouncyBot/Midnight-Agent-AI-Wallet/actions/runs/42284877368",
+    "sourceCommit": "c24ed212a1f6484b55b7de8e962f7db94bd2caa0",
+    "evidenceArchiveSha256": "7219710434af286dd0560b01453ce173cde275c50ca1c2790b6b72cdd840d66b",
+    "browserRunJsonSha256": "5ff248c755f330bc66e04d993c64087257907efe46f02c7fd44b6c33a071d547",
+    "startedAt": "2026-11-06T20:02:58.387Z",
+    "finishedAt": "2026-11-06T20:03:20.307Z",
+    "elapsedMs": 21920,
+    "status": "funding-required",
+    "restoredExistingWallet": true,
+    "walletCreationRequested": false,
+    "walletUnlockConfirmed": true,
+    "provingSetting": {
+      "label": "Run in this app (WASM)",
+      "selectedInRealUi": true,
+      "persistedOnReopen": true
+    },
+    "connector": {
+      "apiVersion": "4.1.0-canary.20260819082604-3b622cb",
+      "networkId": "preview",
+      "connectionStatus": "connected",
+      "remoteProverReported": false
+    },
+    "completedStage": "prepare-targeted-receipt-verifier",
+    "browserClosed": true,
+    "scope": "Profile restore, real Lace settings and API connection, then app recipient preparation. No vault deployment, wallet proof or settlement."
+  },
+  "hostedBuild": {
+    "moduleUrl": "https://ibkr-bouncybot.github.io/Midnight-Agent-AI-Wallet/testnet-app-054948596efa5f45.mjs",
+    "moduleSha256": "054948596efa5f4522b4fce4f99cd7391936fb50af26ee7912df2d3f2a672e36",
+    "manifestSha256": "0527be5b52e484962dd5902186816d5152537e28431ab8e16d3bcd3b2bf26251"
+  },
+  "faucetFunding": {
+    "source": "Read-only public Preview indexer response",
+    "sourceJsonSha256": "367c9243351500e02bc63e3c42a03ca74f808d4b4eba615f45dda2219b67754f",
+    "transactionIdentifiers": [
+      "0038733087871741e22fd36b1e0b8ab82073da91aae7f5f344b16cb0aaf5a11c13",
+      "00aab14852084707ae093fbb7904dadf08fa4cdb0bbfff9443ddf233942190a9d3"
+    ],
+    "status": "SUCCESS",
+    "blockHeight": 1628811,
+    "blockHash": "6715440fb588bc01762bcd5da930108e26c9d26f48175967fbb532074812eb00",
+    "blockTimestamp": "2026-11-06T20:05:12.001Z",
+    "matchedOutput": {
+      "owner": "mn_addr_preview1r8f5pda8pge38m2g0z2t96kn9kg5a2y533m7my24llekjf4j779qfyu46w",
+      "tokenType": "0000000000000000000000000000000000000000000000000000000000000000",
+      "value": "5000000000"
+    },
+    "boundary": "External faucet transfer, not an app payment or a Lace-approved transaction from this test.",
+    "sameAddressAsAllThreeLaceRuns": true
+  },
+  "fundingObservation": {
+    "runId": "42287439158",
+    "url": "https://github.com/IBKR-BouncyBot/Midnight-Agent-AI-Wallet/actions/runs/42287439158",
+    "sourceCommit": "15b2ccb8d61aeb1af87e54ca112186cd4fa05e8a",
+    "evidenceArchiveSha256": "691a4b5be1631d83e39856cf6837020db49302b9aa2d89e0ea7ad94a53d9e63d",
+    "browserRunJsonSha256": "0867cc77634278b5aff6dbd2f9a5fbf90959ebf8f376a3ee157c7c02e52cd339",
+    "startedAt": "2026-11-06T20:20:35.256Z",
+    "finishedAt": "2026-11-06T20:35:57.063Z",
+    "status": "stopped",
+    "stopCode": "PREVIEW_NIGHT_NOT_OBSERVED",
+    "sampleCount": 15,
+    "firstSampleAt": "2026-11-06T20:20:57.245Z",
+    "lastSampleAt": "2026-11-06T20:35:35.602Z",
+    "observationSpanMs": 878357,
+    "allSamplesNightAtomic": "0",
+    "allSamplesDustAtomic": "0",
+    "allSamplesDustCapAtomic": "0",
+    "renderedSyncSampleCount": 14,
+    "allRenderedSyncSamples": {
+      "state": "syncing",
+      "percent": 0
+    },
+    "configuredEndpoints": {
+      "indexer": "https://blockfrost.lw.iog.io/midnight-preview/",
+      "indexerWebSocket": "wss://blockfrost.lw.iog.io/midnight-preview/ws",
+      "node": "https://blockfrost.lw.iog.io/midnight-preview-rpc/"
+    },
+    "canonicalProbeEndpoints": {
+      "indexer": "https://indexer.preview.midnight.network/api/v4/graphql",
+      "node": "https://rpc.preview.midnight.network"
+    },
+    "endpointChecks": [
+      {
+        "target": "configured-indexer",
+        "sampleCount": 15,
+        "httpStatuses": [
+          410
+        ],
+        "allResponsesValid": false
+      },
+      {
+        "target": "configured-node",
+        "sampleCount": 15,
+        "httpStatuses": [
+          410
+        ],
+        "allResponsesValid": false,
+        "allReportPreviewChain": false
+      },
+      {
+        "target": "canonical-indexer",
+        "sampleCount": 15,
+        "httpStatuses": [
+          200
+        ],
+        "allResponsesValid": true
+      },
+      {
+        "target": "canonical-node",
+        "sampleCount": 15,
+        "httpStatuses": [
+          200
+        ],
+        "allResponsesValid": true,
+        "allReportPreviewChain": true
+      }
+    ],
+    "transactionsRetried": 0,
+    "uncertainAction": null,
+    "browserClosed": true
+  },
+  "supportedRefresh": {
+    "runId": "42288787646",
+    "url": "https://github.com/IBKR-BouncyBot/Midnight-Agent-AI-Wallet/actions/runs/42288787646",
+    "sourceCommit": "2abaf987c016901241e300ff90b657ff6056f8fe",
+    "runnerSha256": "2af63fa367abe056f36d9bf7bc7394a39bd25d76ccf402a68e7a11bfee8820b8",
+    "evidenceArchiveSha256": "748e29459ba18f0a0624aeafc35172a9f372aa80edb0b7d2727f49f95ee2a806",
+    "browserRunJsonSha256": "e668ba72e24b35ee615ad7748519b57bfd9b767271be4756ad78828972755581",
+    "startedAt": "2026-11-06T20:36:33.285Z",
+    "finishedAt": "2026-11-06T20:52:18.266Z",
+    "status": "stopped",
+    "stopCode": "PREVIEW_NIGHT_NOT_OBSERVED",
+    "refresh": {
+      "method": "close-all-Lace-views-and-reopen-once",
+      "startedAt": "2026-11-06T20:36:51.650Z",
+      "finishedAt": "2026-11-06T20:37:17.990Z",
+      "sameContext": true,
+      "samePublicAccount": true,
+      "closedViewCount": 1,
+      "viewCloseCycleObserved": true,
+      "reopened": true,
+      "configurationBefore": {
+        "indexerUri": "https://blockfrost.lw.iog.io/midnight-preview/",
+        "indexerWsUri": "wss://blockfrost.lw.iog.io/midnight-preview/ws",
+        "substrateNodeUri": "https://blockfrost.lw.iog.io/midnight-preview-rpc/",
+        "matchesKnownPreviewEndpoints": true
+      },
+      "configurationAfter": {
+        "indexerUri": "https://blockfrost.lw.iog.io/midnight-preview/",
+        "indexerWsUri": "wss://blockfrost.lw.iog.io/midnight-preview/ws",
+        "substrateNodeUri": "https://blockfrost.lw.iog.io/midnight-preview-rpc/",
+        "matchesKnownPreviewEndpoints": true
+      },
+      "publicConfigurationProjectionChanged": false,
+      "provingSettingRechecked": {
+        "label": "Run in this app (WASM)",
+        "selectedInRealUi": true,
+        "persistedOnReopen": true
+      }
+    },
+    "fundingObservation": {
+      "sampleCount": 15,
+      "firstSampleAt": "2026-11-06T20:37:18.453Z",
+      "lastSampleAt": "2026-11-06T20:52:00.278Z",
+      "observationSpanMs": 881825,
+      "allSamplesNightAtomic": "0",
+      "allSamplesDustAtomic": "0",
+      "allSamplesDustCapAtomic": "0",
+      "renderedSyncSampleCount": 15,
+      "allRenderedSyncSamples": {
+        "state": "syncing",
+        "percent": 0
+      },
+      "endpointChecks": [
+        {
+          "target": "configured-indexer",
+          "sampleCount": 15,
+          "httpStatuses": [
+            410
+          ],
+          "allResponsesValid": false
+        },
+        {
+          "target": "configured-node",
+          "sampleCount": 15,
+          "httpStatuses": [
+            410
+          ],
+          "allResponsesValid": false,
+          "allReportPreviewChain": false
+        },
+        {
+          "target": "canonical-indexer",
+          "sampleCount": 15,
+          "httpStatuses": [
+            200
+          ],
+          "allResponsesValid": true
+        },
+        {
+          "target": "canonical-node",
+          "sampleCount": 15,
+          "httpStatuses": [
+            200
+          ],
+          "allResponsesValid": true,
+          "allReportPreviewChain": true
+        }
+      ]
+    },
+    "observedHostCounters": {
+      "e.lw.iog.io": {
+        "requests": 15,
+        "responses": 14,
+        "http2xx": 14
+      },
+      "midnight-preview.blockfrost.io": {
+        "requests": 0,
+        "responses": 0,
+        "http2xx": 0
+      },
+      "rpc.midnight-preview.blockfrost.io": {
+        "requests": 0,
+        "responses": 0,
+        "http2xx": 0
+      }
+    },
+    "hostCounterBoundary": "Only requests/responses exposed to Playwright were counted. Requests to e.lw.iog.io are not evidence of endpoint-feature-flag delivery or application, and zero observed requests does not establish absence of service-worker traffic.",
+    "appOperations": 0,
+    "transactionsRetried": 0,
+    "uncertainAction": null,
+    "browserClosed": true,
+    "result": "One supported close/reopen cycle retained the account and internal WASM selection. Its reported endpoint configuration did not change, and the subsequent 15-minute funding wait remained blocked. No flag payload was read or injected and no endpoint override, DUST designation or app transaction was attempted."
+  },
+  "futureFailFastGuard": {
+    "liveExercised": false,
+    "regressionTestCommand": "node --test scripts/lace-ci/browser-run.test.mjs",
+    "regressionTestsPassed": 21,
+    "guardTestsIncluded": 4,
+    "boundary": "Implemented and independently reviewed after these live runs. Stops only after two consecutive exact legacy indexer/node HTTP 410 observations with zero balances and no pending or completed operations; does not modify endpoints or retry a transaction."
+  },
+  "conclusion": "Both completed funded exercises stopped before DUST designation or app transactions. The same faucet-funded Lace account still reported the retired Preview proxy endpoints after one supported close/reopen refresh; all configured-endpoint health samples were HTTP 410 while canonical public endpoints returned valid HTTP 200 responses. End-to-end payment remains blocked; the confirmed faucet transfer is not missing.",
+  "boundaries": [
+    "Only the three completed runs listed here are summarized. Future fail-fast guard behavior has regression coverage but no live-run result.",
+    "Proving mode was selected and rechecked in the real extension UI; an absent prover URI alone does not attest mode or all worker traffic. No wallet/DUST proof was exercised.",
+    "Endpoint health checks are anonymous Node HTTP probes; they are distinct from browser request counters, wallet synchronization and consensus verification.",
+    "The app public-data provider uses canonical Preview endpoints. That does not change the wallet extension endpoint configuration.",
+    "Only public evidence archives and the public faucet indexer response were read. No encrypted profile, seed, password or private opening is included."
+  ],
+  "references": [
+    {
+      "title": "Midnight browser DApp guide: retired built-in endpoint caveat",
+      "url": "https://docs.midnight.network/guides/browser-dapp"
+    },
+    {
+      "title": "Lace audit response: withdrawn Midnight proxy and endpoint feature flags",
+      "url": "https://github.com/input-output-hk/lace/blob/main/docs/security/nwl-audit-response.md"
+    }
+  ]
+}

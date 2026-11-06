@@ -163,6 +163,27 @@ export function requireRefreshPreflight({pendingAction,completedSteps,operationC
   requireThat(pendingAction===null&&Array.isArray(completedSteps)&&completedSteps.length===0
     &&operationCount===0&&approvalCount===0&&transactionCount===0,'REMOTE_CONFIG_REFRESH_REQUIRES_NO_OPERATIONS');
 }
+export function createRetiredPreviewGuard() {
+  // Run-local observations only: a restored archive never supplies a previous
+  // health result. Unknown/new providers and any transient result reset this
+  // narrow diagnosis; canonical health probes cannot trigger it.
+  let consecutive = 0;
+  return (sample, safety) => {
+    const gone = target => {
+      const matches = Array.isArray(sample?.health) ? sample.health.filter(item => item?.target === target) : [];
+      return matches.length === 1 && matches[0].attempted === true && matches[0].reachable === true && matches[0].status === 410;
+    };
+    const noOperations = safety?.pendingAction === null && Array.isArray(safety.completedSteps) && safety.completedSteps.length === 0
+      && safety.operationCount === 0 && safety.approvalCount === 0 && safety.transactionCount === 0 && safety.appOperationCount === 0;
+    const matches = sample?.configuration?.indexerUri === PREVIEW_ENDPOINTS.indexerUri[0]
+      && sample?.configuration?.substrateNodeUri === PREVIEW_ENDPOINTS.substrateNodeUri[0]
+      && sample.nightAtomic === '0' && sample.dustAtomic === '0' && sample.dustCapAtomic === '0'
+      && noOperations && gone('configured-indexer') && gone('configured-node');
+    consecutive = matches ? consecutive + 1 : 0;
+    requireThat(consecutive < 2, 'LACE_PREVIEW_ENDPOINTS_RETIRED');
+    return consecutive;
+  };
+}
 export function previewPublicHost(value) {
   try { const parsed = new URL(value); return ['https:', 'wss:'].includes(parsed.protocol) && PREVIEW_HOSTS.includes(parsed.hostname) ? parsed.hostname : null; }
   catch { return null; }
@@ -290,6 +311,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
   let walletUnlockAttempted = false;
   const approved = new WeakSet();
   let approvals = 0;
+  const observeRetiredPreviewEndpoints = createRetiredPreviewGuard();
   const origin = new URL(APP_URL).origin;
   report.previewNetwork = { observationBoundary:'Host counters cover requests exposed by Playwright, not all extension service-worker traffic. Anonymous probes use Node fetch and do not establish wallet sync or settlement.',
     hosts:Object.fromEntries(PREVIEW_HOSTS.map(host=>[host,{requests:0,responses:0,requestFailures:0,http2xx:0,http3xx:0,http4xx:0,http5xx:0,webSocketsCreated:0,webSocketsClosed:0,webSocketErrors:0,webSocketFramesReceived:0}])) };
@@ -362,6 +384,12 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     await save();process.stdout.write(JSON.stringify({stage:'observe-preview-wallet-funding',at:sample.at,
       nightAtomic:sample.nightAtomic,dustAtomic:sample.dustAtomic,dustCapAtomic:sample.dustCapAtomic,syncUi:sample.syncUi,
       configuration:sample.configuration,endpointMetadata:sample.endpointMetadata,health:sample.health,traffic:sample.traffic})+'\n');
+    // Preserve both complete read-only observations before stopping. This
+    // guard neither changes endpoints nor starts/retries a wallet operation.
+    const ui = await uiPublic();
+    observeRetiredPreviewEndpoints(sample, { pendingAction:metadata.pendingAction, completedSteps:metadata.completedSteps,
+      operationCount:report.operations.length, approvalCount:approvals, transactionCount:transactionIds(ui).length,
+      appOperationCount:ui.activity.length });
   }
   async function uiStep(name, task) {
     await stage(name);
@@ -775,6 +803,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     report.status = 'stopped'; report.stopCode = error instanceof Stop ? error.code : 'BROWSER_STEP_FAILED';
     await settingsDiagnostics().catch(() => {});
     if (report.stopCode === 'PREVIEW_NIGHT_NOT_OBSERVED') report.nextAction = 'The wallet API did not observe NIGHT within the read-only wait. Inspect endpoint and sync evidence; retain this exact profile. This does not imply that the confirmed funding transfer is missing. No designation or app transaction was sent.';
+    if (report.stopCode === 'LACE_PREVIEW_ENDPOINTS_RETIRED') report.nextAction = 'Both configured legacy Lace Preview services returned HTTP 410 in two consecutive read-only observations. Retain this exact encrypted profile and inspect the configured and canonical health evidence. No designation or app transaction was started; no endpoint override or automatic retry was attempted. Wallet balances of zero do not establish that the confirmed funding transfer is missing.';
     report.uncertainAction = metadata.pendingAction?.step ?? null; process.exitCode = 1;
     if (report.stopCode === 'INSUFFICIENT_OPERATION_BUDGET') report.nextAction = 'Continue from this exact cleanly closed encrypted profile in a new run. No next action was started.';
   } finally {

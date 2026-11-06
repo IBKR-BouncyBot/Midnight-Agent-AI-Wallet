@@ -21,6 +21,8 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run test:unit
+      - name: Check isolated Lace test safeguards
+        run: node --test tests/lace-ci-state.test.mjs tests/lace-extension-package.test.mjs scripts/lace-ci/browser-run.test.mjs
       - run: npm run check:web
       - run: node services/mcp/scripted-agent.mjs
   native-runtime:

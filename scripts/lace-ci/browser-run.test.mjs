@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { APP_URL, validateEnvironment, parseArgs, atomicInteger, validatePrivateMetadata, publicStepEvidence, bootstrapStorageDecision, classifyUiFailure, extractStaticControlIds,
   requireOperationBudget, newActionTransactions, waitForReadyButton, sanitizePreviewConfiguration, previewPublicHost, parseSyncStatusLabel,
-  publicEndpointMetadata,isLaceViewUrl,requireRefreshPreflight } from './browser-run.mjs';
+  publicEndpointMetadata,isLaceViewUrl,requireRefreshPreflight,createRetiredPreviewGuard } from './browser-run.mjs';
 
 const env = { CI:'true', GITHUB_ACTIONS:'true', RUNNER_OS:'Linux', GITHUB_REPOSITORY:'IBKR-BouncyBot/Midnight-Agent-AI-Wallet', GITHUB_RUN_ID:'123', RUNNER_TEMP:'/tmp/runner' };
 
@@ -147,4 +147,77 @@ test('supported refresh is limited to known Lace views and no prior operation',(
   requireRefreshPreflight(valid);
   for(const patch of [{pendingAction:{step:'pay'}},{completedSteps:['generate-dust']},{operationCount:1},{approvalCount:1},{transactionCount:1}])
     assert.throws(()=>requireRefreshPreflight({...valid,...patch}),/REMOTE_CONFIG_REFRESH_REQUIRES_NO_OPERATIONS/);
+});
+
+function retiredObservation() {
+  return { nightAtomic:'0', dustAtomic:'0', dustCapAtomic:'0', configuration:sanitizePreviewConfiguration({
+    indexerUri:'https://blockfrost.lw.iog.io/midnight-preview/',
+    indexerWsUri:'wss://blockfrost.lw.iog.io/midnight-preview/ws',
+    substrateNodeUri:'https://blockfrost.lw.iog.io/midnight-preview-rpc/' }),
+    health:[
+      {target:'configured-indexer',attempted:true,reachable:true,status:410,validResponse:false,failure:'invalid-response'},
+      {target:'configured-node',attempted:true,reachable:true,status:410,validResponse:false,failure:'invalid-response'},
+      {target:'canonical-indexer',attempted:true,reachable:true,status:200,validResponse:true,blockHeight:'123'},
+      {target:'canonical-node',attempted:true,reachable:true,status:200,validResponse:true,previewChain:true},
+    ] };
+}
+const beforeAnyOperation = {pendingAction:null,completedSteps:[],operationCount:0,approvalCount:0,transactionCount:0,appOperationCount:0};
+
+test('retired Preview guard stops only on the second consecutive legacy-pair HTTP 410 observation',()=>{
+  const observe=createRetiredPreviewGuard(), sample=retiredObservation();
+  assert.equal(observe(sample,beforeAnyOperation),1);
+  assert.throws(()=>observe(sample,beforeAnyOperation),error=>error.code==='LACE_PREVIEW_ENDPOINTS_RETIRED');
+  assert.equal(createRetiredPreviewGuard()(sample,beforeAnyOperation),1,'a new run cannot inherit a previous observation');
+  assert.equal(sample.health.length,4,'configured and canonical report evidence remains intact');
+});
+
+test('one successful, transient, missing or ambiguous configured response resets the retired-service count',()=>{
+  const variants=[
+    {status:200,validResponse:true}, {status:503}, {status:null,reachable:false,failure:'timeout'}, {attempted:false},
+  ].map(patch=>{const sample=retiredObservation();Object.assign(sample.health[1],patch);return sample;});
+  const missing=retiredObservation();missing.health.splice(0,1);variants.push(missing);
+  const duplicate=retiredObservation();duplicate.health.push({...duplicate.health[0]});variants.push(duplicate);
+  const canonicalOnly=retiredObservation();
+  canonicalOnly.health.forEach(item=>{item.status=item.target.startsWith('canonical-')?410:200;});variants.push(canonicalOnly);
+  for(const interruption of variants) {
+    const observe=createRetiredPreviewGuard();
+    assert.equal(observe(retiredObservation(),beforeAnyOperation),1);
+    assert.equal(observe(interruption,beforeAnyOperation),0);
+    assert.equal(observe(retiredObservation(),beforeAnyOperation),1);
+    assert.throws(()=>observe(retiredObservation(),beforeAnyOperation),/LACE_PREVIEW_ENDPOINTS_RETIRED/);
+  }
+});
+
+test('retired-service diagnosis requires zero balances and no pending, completed, approved or app operations',()=>{
+  for(const field of ['nightAtomic','dustAtomic','dustCapAtomic']) {
+    const observe=createRetiredPreviewGuard();observe(retiredObservation(),beforeAnyOperation);
+    assert.equal(observe({...retiredObservation(),[field]:'1'},beforeAnyOperation),0);
+    assert.equal(observe(retiredObservation(),beforeAnyOperation),1);
+  }
+  for(const patch of [{pendingAction:{step:'pay'}},{pendingAction:undefined},{completedSteps:['generate-dust']},
+    {operationCount:1},{approvalCount:1},{transactionCount:1},{appOperationCount:1}]) {
+    const observe=createRetiredPreviewGuard();observe(retiredObservation(),beforeAnyOperation);
+    assert.equal(observe(retiredObservation(),{...beforeAnyOperation,...patch}),0);
+    assert.equal(observe(retiredObservation(),beforeAnyOperation),1);
+  }
+});
+
+test('unknown, canonical and credential-bearing new provider endpoints never match the legacy pair',()=>{
+  const configurations=[
+    {indexerUri:'https://indexer.preview.midnight.network/api/v4/graphql',substrateNodeUri:'https://rpc.preview.midnight.network/'},
+    {indexerUri:'https://blockfrost.lw.iog.io/midnight-preview/',substrateNodeUri:'https://rpc.preview.midnight.network/'},
+    {indexerUri:'https://unknown.example/indexer',substrateNodeUri:'https://unknown.example/node'},
+    {indexerUri:'https://midnight-preview.blockfrost.io/api/v0?project_id=never-output-this',
+      substrateNodeUri:'https://rpc.midnight-preview.blockfrost.io?project_id=never-output-this'},
+    {indexerUri:'https://blockfrost.lw.iog.io/midnight-preview/?secret=never-output-this',
+      substrateNodeUri:'https://blockfrost.lw.iog.io/midnight-preview-rpc/'},
+  ];
+  for(const configuration of configurations) {
+    const observe=createRetiredPreviewGuard();observe(retiredObservation(),beforeAnyOperation);
+    const sample={...retiredObservation(),configuration:sanitizePreviewConfiguration(configuration)};
+    assert.equal(JSON.stringify(sample).includes('never-output-this'),false);
+    assert.equal(observe(sample,beforeAnyOperation),0);
+    assert.equal(observe(sample,beforeAnyOperation),0);
+    assert.equal(observe(retiredObservation(),beforeAnyOperation),1);
+  }
 });

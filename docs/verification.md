@@ -1,6 +1,6 @@
 # Verification record — 6 November 2026
 
-The confidential-custody milestone passed on an isolated **local** Midnight ledger, and the Node runner finalized a real public **Preview** payment with its merchant receipt and private vault change verified. The browser path has separately produced actual WASM `mint` and `pay` proofs and passed browser encrypted-storage checks. Following the user's slow-sync report, the primary browser flow now verifies the exact finalized recipient output without replaying history. Actual browser setup and synthetic receipt checks passed; a complete browser/Lace payment remains untested. No Preprod/Mainnet deployment or live ChatGPT/Claude integration is claimed. The [acceptance matrix](acceptance-status.md) lists the remaining work.
+The confidential-custody milestone passed on an isolated **local** Midnight ledger, and the Node runner finalized a real public **Preview** payment with its merchant receipt and private vault change verified. The browser path has separately produced actual WASM `mint` and `pay` proofs and passed browser encrypted-storage checks. Following the user's slow-sync report, the primary browser flow now verifies the exact finalized recipient output without replaying history. Actual browser setup and synthetic receipt checks passed. An isolated real Lace 2.5.1 run connected successfully, but its funded Preview wallet could not sync through retired configured endpoints; the complete browser/Lace payment remains unverified. No Preprod/Mainnet deployment or live ChatGPT/Claude integration is claimed. The [acceptance matrix](acceptance-status.md) lists the remaining work.
 
 ## Distinct gates
 
@@ -17,6 +17,7 @@ The confidential-custody milestone passed on an isolated **local** Midnight ledg
 | Browser Preview observer | Actual SDK WebSocket connection processed 2,409 events before stopping; partial history only, no receipt or full-sync claim. [Measured result](evidence/browser-observer.json). |
 | Browser recipient preparation | Production service setup took **89 ms after module loading**, with real Preview RPC, zero WebSockets/transaction actions and the legacy identity/snapshot preserved. Synthetic read-only Lace adapter and in-memory profile. [Measured result](evidence/browser-recipient-setup.json). |
 | Browser receipt verification | Key derivation **0.7 ms**, native receipt verification **30.9 ms**; matching output decrypted, wrong amount/recipient rejected. Fabricated finality and **invalid placeholder proofs**; no chain acceptance. [Measured result](evidence/browser-receipt-verification.json). |
+| Real Lace 2.5.1 readiness | Official signed extension restored and connected to the hosted app in **21.92 seconds**, with internal WASM selected and rechecked in its UI. The matching faucet transfer finalized, but two **15-minute** observations, before and after one supported view refresh, found zero wallet balance and rendered sync at 0%. Configured proxy endpoints stayed unchanged and returned HTTP 410; canonical Preview endpoints returned HTTP 200. No DUST designation or app transaction was sent. [Public evidence](evidence/lace-2.5.1-preview-readiness.json). |
 | User-reported browser session | Lace connection reported working. Recipient replay reached 16,078 / 285,045 events (5.6%) after about 30 minutes. This is a user observation, not a controlled full-sync benchmark or settlement result. |
 | Browser encrypted storage | Actual Chromium IndexedDB/WebCrypto/Web Locks: reopen, writer exclusion, wrong password, strict commit/abort, tamper/context rejection and encrypted backup restore passed with synthetic state. [Measured result](evidence/browser-storage.json). |
 | MCP subprocess | `node services/mcp/scripted-agent.mjs` passed its real stdio probe; payments unavailable, no model client or settlement exercised. |
@@ -217,6 +218,67 @@ The static build and **59** checked web links also passed. These
 checks and the user's reported Lace connection still do not establish a
 complete browser payment. The earlier Node settlement evidence below remains
 separate.
+
+## Real Lace 2.5.1 readiness and endpoint blocker
+
+The isolated Linux/Chromium [setup run 42284877368](https://github.com/IBKR-BouncyBot/Midnight-Agent-AI-Wallet/actions/runs/42284877368)
+restored the disposable test wallet, unlocked Lace, selected **Run in this app
+(WASM)** and checked that selection after reopening settings. API 4 connected to
+Preview and the hosted app prepared its recipient verifier. This took **21,920
+ms**; the run ended at the funding prerequisite. The official Chrome Web Store
+package's exact hash, developer signature and publisher signature were checked.
+This was a real extension connection, with no mocked wallet or extension patch.
+
+The public indexer subsequently reported **5,000,000,000 atomic NIGHT** at the
+same address, in successful faucet transaction block **1628811**. The separate
+[exercise run 42287439158](https://github.com/IBKR-BouncyBot/Midnight-Agent-AI-Wallet/actions/runs/42287439158)
+restored that account and waited 15 minutes. Its 15 samples all reported zero
+NIGHT, DUST and DUST capacity; all 14 rendered sync samples showed **0%**. Lace's
+configured `blockfrost.lw.iog.io` Preview indexer and node returned **HTTP 410**
+in every health sample. The canonical public Preview indexer and node returned
+valid **HTTP 200** responses. The run stopped with
+`PREVIEW_NIGHT_NOT_OBSERVED`, no unresolved action, no DUST designation and no
+app transaction. This does not mean the confirmed faucet transfer was missing.
+
+The completed [refresh run 42288787646](https://github.com/IBKR-BouncyBot/Midnight-Agent-AI-Wallet/actions/runs/42288787646)
+then closed the one open Lace view and reopened it in the same browser context,
+using the extension's supported refresh path. It retained the same public
+account and rechecked the internal WASM selection. Reported node/indexer
+configuration was identical before and after the cycle. In the subsequent
+15-minute wait, all 15 samples again showed zero NIGHT/DUST/capacity and 0%
+rendered sync; all configured-endpoint probes returned HTTP 410 and all
+canonical-endpoint probes returned valid HTTP 200 responses. The run stopped
+at **20:52:18.266 UTC** with `PREVIEW_NIGHT_NOT_OBSERVED`, closed the browser
+cleanly and recorded no unresolved action or app transaction.
+
+Playwright observed 15 requests and 14 responses from `e.lw.iog.io`, all 14
+responses HTTP 2xx, and no requests to the two new direct Blockfrost hosts.
+These host counters do not reveal endpoint-configuration payloads, prove that
+new flags were delivered or applied, or cover all extension worker traffic.
+No flag payload was read or injected and no endpoint override was attempted.
+
+The [public readiness record](evidence/lace-2.5.1-preview-readiness.json) retains
+the run and artifact hashes, matching faucet output and endpoint measurements.
+Midnight's [browser guide](https://docs.midnight.network/guides/browser-dapp)
+documents the retired proxy, and Lace's
+[audit response](https://github.com/input-output-hk/lace/blob/main/docs/security/nwl-audit-response.md)
+describes replacement endpoints delivered through remote feature flags. The
+app already uses canonical public endpoints; that does not reconfigure Lace's
+wallet sync. The signed 2.5.1 settings display the node and indexer as disabled
+controls, so this record does not recommend an unavailable endpoint editor.
+
+This is a confirmed setup result and an external endpoint blocker, **not a full
+payment pass**. Internal wallet/DUST proving, transaction approvals, deployment
+and payment remain unverified in these extension runs. The readiness record
+includes these three completed runs. The earlier successful Node payment below
+is separate evidence.
+
+A subsequent CI guard stops future runs after two consecutive observations of
+this exact retired endpoint pair, only with zero balances and no operations
+pending or completed. It retains the observations and never overrides endpoints
+or retries transactions. Its 4 focused regression tests and the full 21-test
+harness suite passed independent review; the guard was added after the live
+runs above and has **not** been exercised in a live run.
 
 ## Demonstrated public Preview payment
 

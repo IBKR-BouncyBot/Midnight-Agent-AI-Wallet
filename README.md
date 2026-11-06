@@ -29,6 +29,8 @@ Recipient preparation does not wait for chain-wide history replay. The app check
 
 **Browser verification:** actual WASM mint and payment-circuit proofs completed in a desktop browser (about 22 seconds and 3 minutes 22 seconds). Encrypted backup/restore and a partial Preview observer connection also passed. The user subsequently confirmed a Lace connection. A full Lace-approved payment and mobile compatibility remain unverified; the proof timings used synthetic fixtures. [Measured results](docs/verification.md).
 
+**Lace 2.5.1 readiness:** an isolated test with the official signed extension restored its test wallet, selected internal WASM and connected to the hosted app in 21.92 seconds. Faucet funding reached the matching Preview address, but Lace's configured proxy endpoints returned HTTP 410 and wallet sync stayed at 0%. A supported close/reopen refresh preserved the account and WASM setting but left those endpoints unchanged; both 15-minute observations remained blocked. No DUST designation or app transaction was sent, so the complete payment flow remains unverified. [Public evidence](docs/evidence/lace-2.5.1-preview-readiness.json).
+
 The [local developer page](https://ibkr-bouncybot.github.io/Midnight-Agent-AI-Wallet/local.html) and [local runner setup](docs/testnet-demo.md) remain available as a separate fallback.
 
 Read [the verification record](docs/verification.md) for measured results and remaining work. Browser simulation, native execution, proof generation, local settlement and public Preview settlement are separate checks. A working connection is not a settled payment.
