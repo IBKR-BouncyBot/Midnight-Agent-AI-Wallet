@@ -1,0 +1,18 @@
+{
+  "observedAt": "2026-11-06",
+  "environment": "Codex in-app Chromium browser, Windows; loopback static asset host only",
+  "synthetic": true,
+  "execution": "actual-zkir-v2-wasm-worker",
+  "circuit": "pay",
+  "constraintCheck": "passed",
+  "checkedPublicInputs": 125,
+  "proofBytes": 4501,
+  "proofSha256": "8f591c6a9fe8f0b1b52daccb57fc7d56c949bc442da361a362b5f5efe0fb40dd",
+  "elapsedMs": 202453,
+  "wrongKeyRejected": true,
+  "proofServerUsed": false,
+  "independentCryptographicVerification": "not-performed-by-standalone-probe",
+  "networkSubmission": "not-attempted",
+  "networkAcceptance": "not-tested",
+  "verificationBoundary": "Known public fixture with synthetic coin index; this measures the contract circuit, not Zswap membership, wallet/DUST proofs or settlement."
+}

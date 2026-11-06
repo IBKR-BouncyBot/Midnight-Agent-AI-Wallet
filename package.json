@@ -8,8 +8,8 @@
     "node": ">=24.18.0 <25"
   },
   "scripts": {
-    "dev": "node scripts/serve-web.mjs",
-    "build:web": "node scripts/build-web.mjs",
+    "dev": "node scripts/serve-web.mjs --dist",
+    "build:web": "node scripts/prepare-browser-artifacts.mjs && node scripts/build-web.mjs && node scripts/build-browser.mjs",
     "check:web": "node scripts/check-web.mjs",
     "demo:testnet": "node services/demo/server.mjs",
     "compile": "node scripts/compile.mjs",
@@ -20,7 +20,8 @@
     "test:network": "node tests/network/private-vault.mjs",
     "test:network:durable": "node tests/network/durable-vault.mjs",
     "mcp:inspect": "node services/mcp/stdio.mjs",
-    "agent:scripted": "node services/mcp/scripted-agent.mjs"
+    "agent:scripted": "node services/mcp/scripted-agent.mjs",
+    "test:browser": "node --test tests/browser-*.test.mjs scripts/browser-prover-tests.mjs"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "0.16.0",
@@ -35,6 +36,13 @@
     "@midnight-ntwrk/midnight-js-utils": "4.1.1",
     "@midnight-ntwrk/testkit-js": "4.1.1",
     "@midnight-ntwrk/wallet-sdk": "1.2.0",
+    "@midnight-ntwrk/wallet-sdk-abstractions": "2.1.0",
+    "@midnight-ntwrk/wallet-sdk-address-format": "3.1.2",
+    "@midnight-ntwrk/wallet-sdk-prover-client": "1.2.3",
+    "@midnight-ntwrk/wallet-sdk-shielded": "3.0.2",
+    "@midnight-ntwrk/zkir-v2": "2.1.1",
+    "@noble/hashes": "2.4.0",
+    "@scure/base": "2.4.0",
     "bn.js": "5.2.5",
     "pino": "9.14.0",
     "rxjs": "7.8.2",
@@ -46,5 +54,13 @@
     "@midnight-ntwrk/wallet-sdk": "1.2.0",
     "@midnight-ntwrk/ledger-v8": "8.1.2",
     "@midnight-ntwrk/zkir-v2": "2.1.1"
+  },
+  "devDependencies": {
+    "assert": "2.1.0",
+    "buffer": "6.0.3",
+    "esbuild": "0.25.12",
+    "events": "3.3.0",
+    "process": "0.11.10",
+    "util": "0.12.5"
   }
 }

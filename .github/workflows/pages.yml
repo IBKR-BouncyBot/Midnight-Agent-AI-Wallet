@@ -4,8 +4,14 @@ on:
     branches: [codex/private-vault-feasibility]
     paths:
       - web/**
-      - scripts/build-web.mjs
-      - scripts/check-web.mjs
+      - packages/**
+      - services/runner/**
+      - services/mcp/**
+      - services/demo/network.mjs
+      - contracts/**
+      - scripts/**
+      - package.json
+      - package-lock.json
       - docs/images/**
       - .github/workflows/pages.yml
   workflow_dispatch:
@@ -27,8 +33,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24.18.0
-      - run: node scripts/check-web.mjs
-      - run: node scripts/build-web.mjs
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: bash scripts/install-compiler.sh
+      - run: npm run compile
+      - run: npm run check:web
+      - run: npm run build:web
+      - run: npm run test:browser
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

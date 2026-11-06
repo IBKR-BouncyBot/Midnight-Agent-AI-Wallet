@@ -1,0 +1,17 @@
+{
+  "observedAt": "2026-11-06",
+  "environment": "Codex in-app Chromium browser, Windows; loopback static site",
+  "schema": "midnight-browser-observer-probe/v1",
+  "network": "preview",
+  "synthetic": true,
+  "receiveOnly": true,
+  "connected": true,
+  "appliedIndex": "2409",
+  "targetIndex": "285045",
+  "strictlyCompleteAtObservation": false,
+  "snapshotBytes": 3369,
+  "historyFreshnessVerified": false,
+  "receiptVerified": false,
+  "transactionSubmitted": false,
+  "stopped": true
+}

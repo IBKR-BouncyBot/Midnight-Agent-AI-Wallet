@@ -1,10 +1,13 @@
-import { cp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 const source = resolve(root, 'web');
 const target = resolve(root, 'dist');
 const allowed = new Set(['.html', '.css', '.js', '.mjs', '.svg', '.png', '.woff2', '.txt', '.md']);
+// Only this fixed generated directory may be cleared; never a caller-supplied path.
+if (target !== resolve(root, 'dist') || source === target) throw new Error('Invalid build directory');
+await rm(target, { recursive: true, force: true });
 await mkdir(target, { recursive: true });
 async function copyTree(from, to) {
   for (const entry of await readdir(from, { withFileTypes: true })) {

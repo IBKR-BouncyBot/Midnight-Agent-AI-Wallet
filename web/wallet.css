@@ -18,6 +18,8 @@
 .wallet-page label{display:block;margin-bottom:9px}
 .wallet-page input,.wallet-page select,.wallet-page textarea{width:100%;padding:13px 14px;border:1px solid #666;background:#181818;color:#fff;border-radius:3px}
 .wallet-page input[readonly]{color:#c1c1c1}
+.wallet-page input[type="checkbox"]{width:18px;height:18px;margin:0 10px 0 0;padding:0;vertical-align:middle;accent-color:#0000fe}
+.testnet-page #connect-form>label{margin-top:22px}
 .wallet-page .field-note{color:#aaa;margin:8px 0 0;font-size:13px;line-height:1.6}
 .wallet-page .action-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:24px}
 .wallet-page .metrics{margin:0 0 28px;border-top:1px solid #303030;border-bottom:1px solid #303030;grid-template-columns:repeat(3,minmax(0,1fr))}

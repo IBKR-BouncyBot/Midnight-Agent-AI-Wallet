@@ -1,9 +1,11 @@
-# Run the public Preview demo
+# Developer fallback: local Preview runner
 
-This page uses a local Node bridge to create real proofs, sign and submit real
-Preview transactions, and verify their finalized results. The landing page also
-offers a separate browser demonstration; its activity is simulated and never
-establishes public-network settlement.
+The main [public testnet page](../web/testnet.html) now uses browser proving and
+Lace; follow [browser setup](browser-proving.md) for that flow. This document
+preserves the separate [local developer page](../web/local.html), which uses a
+Node bridge and local proof server. That runner produced the recorded public
+Preview payment and owner withdrawal. The policy simulation at `browser.html`
+remains separate from both real-network paths.
 
 ## Prepare the local tools
 
@@ -15,6 +17,7 @@ and Docker requirements. From the repository directory in PowerShell:
 ```powershell
 npm.cmd ci --ignore-scripts
 npm.cmd run compile
+npm.cmd run build:web
 wsl -d Ubuntu-24.04 -- bash scripts/local-network.sh prover
 npm.cmd run dev
 ```
@@ -26,25 +29,30 @@ services and ports. Keep WSL/Docker running. If the local proof server is alread
 healthy, reuse it. Linux x86-64 uses the Linux compiler installer described in
 local setup and ordinary `npm` commands.
 
+`npm run dev` serves the generated `dist/` directory. Run `build:web` before
+starting it, and rebuild after changing the frontend. The local developer
+fallback remains at `local.html`; the public `testnet.html` entry uses Lace.
+
 In a second terminal run:
 
 ```powershell
 npm.cmd run demo:testnet
 ```
 
-Open the private URL printed by the bridge. It points to the testnet page on
-`http://127.0.0.1:17640/` and pairs with the API at port `17641`. The page removes
-the pairing fragment and keeps the credential in memory. The published page can
-also pair with a local bridge; browser restrictions on HTTPS-to-loopback access
-vary, so the printed local URL is the supported fallback. Do not share the
+Open the private URL printed by the bridge. It points to
+`http://127.0.0.1:17640/local.html` and pairs with the API at port `17641`. The page
+removes the pairing fragment and keeps the credential in memory. Use this local
+developer page for pairing; `testnet.html` uses Lace directly. Do not share the
 pairing URL: it grants this demonstration's local owner controls.
 
 Windows uses current-user DPAPI to protect the stored encryption key. On systems
 without Windows key protection, set a strong `MIDNIGHT_DEMO_PASSWORD` in the
 bridge's environment before its first run and preserve it separately. The bridge
 never asks for a Lace seed or private key. It creates and reuses its own random
-Preview wallets. A password or seed never belongs in a browser field or committed
-configuration file.
+Preview wallets. The bridge password belongs only in the local environment, not
+in a browser field or committed configuration file. It is unrelated to the
+browser/Lace flow's separate vault-storage password. Neither flow requests a
+Lace seed.
 
 ## Fund, prepare and pay
 

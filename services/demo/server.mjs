@@ -111,7 +111,7 @@ async function main() {
   const bridge = createDemoHttpServer(service);
   try { await bridge.listen(); } catch (error) { await service.close(); throw error; }
   console.log(`Preview runner: http://127.0.0.1:${DEMO_PORT}`);
-  console.log(`Open privately: http://127.0.0.1:17640/testnet.html#bridgeToken=${bridge.token}`);
+  console.log(`Open privately: http://127.0.0.1:17640/local.html#bridgeToken=${bridge.token}`);
   console.log('Keep this terminal open. Run npm run dev in another terminal if the page is unavailable. Type stop and press Enter to close safely.');
   let closing = false;
   const shutdown = async () => {

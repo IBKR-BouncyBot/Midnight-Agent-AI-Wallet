@@ -1,0 +1,19 @@
+{
+  "observedAt": "2026-11-06",
+  "environment": "Codex in-app Chromium browser, Windows; loopback static asset host only",
+  "synthetic": true,
+  "execution": "actual-zkir-v2-wasm-worker",
+  "circuit": "mint",
+  "constraintCheck": "passed",
+  "checkedPublicInputs": 28,
+  "proofBytes": 4501,
+  "proofSha256": "c22e464cadac6056b22c4f72f44003d4bf937d56cc374a9ac9f4ea3922f88267",
+  "elapsedMs": 21971,
+  "wrongKeyRejected": true,
+  "publicArtifacts": "Same-origin static files, copied from compiled contracts and hash-pinned official Midnight artifacts",
+  "proofServerUsed": false,
+  "independentCryptographicVerification": "not-performed-by-standalone-probe",
+  "networkSubmission": "not-attempted",
+  "networkAcceptance": "not-tested",
+  "laceEndToEnd": "pending-user-wallet-test"
+}

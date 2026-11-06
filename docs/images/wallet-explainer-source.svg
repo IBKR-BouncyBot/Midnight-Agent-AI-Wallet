@@ -64,8 +64,8 @@
   <text x="56" y="834" font-size="27">Browser demo</text>
   <text x="56" y="864" class="small muted">Explore the rules. Simulated balances and receipts.</text>
   <text x="748" y="834" font-size="27">Public testnet</text>
-  <text x="748" y="864" class="small muted">Use Preview, a wallet and a prover. Test tokens only.</text>
+  <text x="748" y="864" class="small muted">Browser + Lace. Preview test tokens only.</text>
   <path d="M56 891H1384" class="rule"/>
-  <text x="56" y="925" font-size="16" class="muted">Privacy is bounded: the runner and prover see witnesses; the network sees calls, timing and commitments.</text>
+  <text x="56" y="925" font-size="16" class="muted">Proofs run on your device. The network still sees calls, timing and commitments.</text>
   <text x="1384" y="925" font-size="16" class="muted" text-anchor="end">Research prototype</text>
 </svg>

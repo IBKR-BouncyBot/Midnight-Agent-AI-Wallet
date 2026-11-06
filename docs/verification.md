@@ -1,6 +1,6 @@
 # Verification record — 6 November 2026
 
-The confidential-custody milestone passed on an isolated **local** Midnight ledger, and the first real public **Preview** payment has now finalized with its merchant receipt and private vault change verified. The two-mode owner web app is published. No Preprod/Mainnet deployment or live ChatGPT/Claude integration is claimed. The [acceptance matrix](acceptance-status.md) lists the remaining work.
+The confidential-custody milestone passed on an isolated **local** Midnight ledger, and the Node runner finalized a real public **Preview** payment with its merchant receipt and private vault change verified. The new browser path has separately produced actual WASM `mint` and `pay` proofs, passed an actual browser encrypted-storage probe, and connected its recipient observer to Preview. A complete browser/Lace payment remains untested. No Preprod/Mainnet deployment or live ChatGPT/Claude integration is claimed. The [acceptance matrix](acceptance-status.md) lists the remaining work.
 
 ## Distinct gates
 
@@ -9,7 +9,12 @@ The confidential-custody milestone passed on an isolated **local** Midnight ledg
 | Native compilation | Compact 0.31.1 generated contract JavaScript, ZKIR and full prover/verifier artifacts for all seven vault circuits and the test-token circuit. |
 | Generated runtime / on-chain VM | The original local milestone passed 32 tests, including limits, authority, replay, stale-state rejection, actual transcript partitioning and maintenance signatures. |
 | Protocol, storage and runner | The original local milestone passed 50 tests after candidate-binding and recovery-context review fixes. Mock adapter outcomes are explicitly test doubles. |
-| Full current unit/native command | Latest `npm test`: **102 passed**, zero failed/skipped, including the subsequent Preview/demo tests. The original local milestone passed 82. |
+| Full unit/native command | Latest `npm test`: **155 passed**, zero failed/skipped. The earlier Preview/Node milestone passed 102; the original local milestone passed 82. |
+| Browser automated suite | `npm run test:browser`: **56 passed**, zero failed/skipped. Controlled wallet/worker/storage doubles and native structural/constraint checks; not live Lace settlement. |
+| Browser WASM proof | Actual Chromium Web Worker: synthetic `mint` constraint check passed, 28 public inputs, 4,501-byte proof in 21,971 ms; wrong key rejected. No proof server or network submission. [Measured result](evidence/browser-proving.json). |
+| Browser payment circuit | Actual Chromium Web Worker: synthetic `pay` constraint check passed, 125 inputs, 4,501-byte proof in 202,453 ms; wrong key rejected. The fixture does not exercise actual Zswap membership or wallet/DUST proofs. [Measured result](evidence/browser-payment-proving.json). |
+| Browser Preview observer | Actual SDK WebSocket connection processed 2,409 events before stopping; partial history only, no receipt or full-sync claim. [Measured result](evidence/browser-observer.json). |
+| Browser encrypted storage | Actual Chromium IndexedDB/WebCrypto/Web Locks: reopen, writer exclusion, wrong password, strict commit/abort, tamper/context rejection and encrypted backup restore passed with synthetic state. [Measured result](evidence/browser-storage.json). |
 | MCP subprocess | `node services/mcp/scripted-agent.mjs` passed its real stdio probe; payments unavailable, no model client or settlement exercised. |
 | Upstream proof/network baseline | Real `storeMessage` call finalized `SucceedEntirely`; resulting public state independently queried. [Raw record](evidence/upstream-smoke.json). |
 | Private vault proof/network | Funded, paid a separate merchant, rejected invalid qualification/overspend/replay, recovered change, and finalized owner withdrawal. All accepted transactions were `SucceedEntirely`. [Raw record](evidence/private-vault-local.json). |
@@ -78,8 +83,10 @@ No credentials, private openings, wallet seeds or generated proving keys are inc
 
 ## Two-mode app and public Preview integration
 
-The v0.2 app adds a two-choice landing page, browser policy simulation and a
-five-screen public Preview interface backed by an authenticated local runner.
+The original v0.2 app added a two-choice landing page, browser policy simulation
+and a five-screen Preview interface backed by an authenticated local runner.
+The primary testnet entry now targets browser contract proving and Lace wallet
+operations; the earlier runner interface remains at `local.html`.
 The shared Ballot Lab CSS and Outfit files retain their source licenses. The
 README infographic was rendered and visually checked; its SVG contains outlined
 Outfit letterforms and has an editable text source.
@@ -91,11 +98,11 @@ The landing page was checked at 390px width with stacked choices and no horizont
 overflow. A cramped panel heading found during mobile inspection was corrected.
 These are JavaScript simulation checks, not Compact proofs or network payments.
 
-The frontend syntax, local links, element IDs and content-security-policy checks
-pass. The complete test suite currently reports **102 passed**, including new
-HTTP pairing/origin/host/input boundaries, encrypted identity restoration,
-manifest migration and missing-file fail-closed behavior. The standalone static
-build includes only frontend files and the infographic.
+The earlier frontend syntax, local links, element IDs and content-security-policy
+checks passed. At that milestone **102 tests** passed, including HTTP
+pairing/origin/host/input boundaries, encrypted identity restoration, manifest
+migration and missing-file fail-closed behavior. Those results remain separate
+from the new browser proof and storage measurements below.
 
 The real Preview RPC identified itself as `Midnight Preview`. A fresh random
 wallet was saved under AES-GCM with Windows current-user DPAPI key protection.
@@ -111,7 +118,49 @@ published by successful Pages run 42258652640 for commit `79b031d`. The paired
 Preview browser flow has not yet been exercised end to end. The successful live
 payment below used the authenticated local bridge; it does not establish that
 browser pairing or a real AI client has been tested. Use
-[the public demo guide](testnet-demo.md) for setup and recovery boundaries.
+[the local developer guide](testnet-demo.md) for that runner's setup and recovery
+boundaries, or [browser proving](browser-proving.md) for the new Lace flow.
+
+## Measured browser proving and storage
+
+An actual Codex in-app Chromium browser on Windows ran the pinned ZKIR WASM
+implementation in a Web Worker, using a loopback static asset host and a
+synthetic `mint` preimage. The constraint check returned **28 public inputs**;
+the proof measured **4,501 bytes**, with a recorded elapsed time of **21,971 ms**.
+Its SHA-256 is
+`c22e464cadac6056b22c4f72f44003d4bf937d56cc374a9ac9f4ea3922f88267`.
+A wrong circuit key was rejected. The [record](evidence/browser-proving.json)
+reports no proof-server use, wallet connection or network submission. The
+standalone probe did not independently verify the proof cryptographically or
+establish network acceptance. This measurement is for `mint`, not `pay` or
+Lace's internal wallet/DUST proofs.
+
+The separate [storage record](evidence/browser-storage.json) used actual browser
+IndexedDB, WebCrypto and Web Locks with synthetic state. Exact bigint/byte state
+reopened; a competing writer and a wrong password were rejected; a successful
+request followed by an aborted transaction rolled back; encrypted backup restore
+retained the saved state. Corrupt backups and wrong account context were rejected
+before identity creation. An existing store was protected against an older
+backup, while an authentic older backup could restore into a fresh store. This
+last result demonstrates that backup authentication does not establish chain
+freshness. The probe did not use a real wallet or submit a transaction, kill a
+browser process, simulate power loss or migrate through a different origin's UI.
+
+The production static build mirrors **17 hash-pinned public built-in circuit/SRS
+files** from the SDK's configured artifact origin because that origin does not
+provide the browser CORS access required here. Runtime proving fetches these
+public files from the site's own origin, with no S3 runtime dependency. The
+complete assembled site measured approximately **206.6 MB**; circuit keys and
+parameters are requested on use. [Source hashes and sizes](../scripts/browser-artifacts.json)
+and `browser-build.json` identify the mirrored artifacts. Production excludes
+probe pages and synthetic witness-preimage files.
+
+The public Preview RPC/indexer also accepted read-only HTTP preflight/query
+requests and indexer GraphQL WebSocket handshakes with both the GitHub Pages and
+localhost origins. This checks endpoint availability and CORS behavior; it does
+not establish a browser wallet connection, proof or settlement. Full Lace
+approval, internal fee proving, browser payment and actual termination recovery
+remain separate validation steps.
 
 ## Demonstrated public Preview payment
 
