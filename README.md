@@ -8,8 +8,6 @@ A confidential, contract-controlled allowance for an AI agent on Midnight. The a
 
 ### [Open the app →](https://ibkr-bouncybot.github.io/Midnight-Agent-AI-Wallet/)
 
-The front page offers two paths in the same black, white and blue visual language as [Midnight Ballot Lab](https://ibkr-bouncybot.github.io/Midnight-BallotLab/).
-
 | Mode | What you can try | What you need |
 | --- | --- | --- |
 | [**Browser demo**](https://ibkr-bouncybot.github.io/Midnight-Agent-AI-Wallet/browser.html) | Set an allowance, request payments, inspect rejections, and try the owner controls. Balances and receipts are explicitly simulated. | A browser. No wallet, tokens or network transaction. |
@@ -35,7 +33,7 @@ Read [the verification record](docs/verification.md) for measured results and re
 - Local ledger/prover/indexer harness with independently observed recipient balances, private coin qualification and change recovery.
 - Encrypted private snapshots, request journal and staged transaction runner; scoped provider-neutral payment schemas and an inspection-only MCP stdio endpoint.
 - Current ChatGPT and Claude connection guidance, exact toolchain pins, CI and recovery documentation.
-- Ballot Lab–styled two-mode frontend, a browser policy demo, and a local Preview transaction runner.
+- Browser policy demo and a public Preview transaction demo.
 
 The executable MCP endpoint is currently inspection-only. Authenticated remote MCP, Preprod validation and live ChatGPT/Claude payment tests remain development work. The app's agent request screen lets you exercise the payment boundary; it is not a connected AI model. No mainnet funds are used.
 
@@ -76,13 +74,10 @@ The runner and local prover see witnesses. Chain observers can see contract call
 - [Full handover acceptance status](docs/acceptance-status.md)
 - [MCP boundary](services/mcp/README.md)
 - [ChatGPT and Claude integration paths](docs/ai-connections.md)
-- [Current Ballot Lab visual reference](docs/design-reference.md)
 - [Implementation plan](docs/implementation-plan.md)
 - [Dependency review](docs/dependencies.md)
 
-CI separates protocol/storage, native-runtime, static frontend publication, and manually selected local proof/settlement jobs. GitHub Pages hosts only the frontend. See [third-party notices](THIRD_PARTY_NOTICES.md) for upstream licenses.
-
-The README infographic is a standalone SVG with the Outfit letterforms embedded as paths. Its [editable source](docs/images/wallet-explainer-source.svg) and [generation script](scripts/outline-infographic.py) are included.
+See [third-party notices](THIRD_PARTY_NOTICES.md) for upstream licenses.
 
 ## Buy me a coffee
 
