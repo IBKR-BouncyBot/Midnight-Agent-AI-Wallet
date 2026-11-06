@@ -1,5 +1,5 @@
 import { Buffer } from 'buffer';
-import { createHash } from './crypto.mjs';
+import { createHash, isDeepStrictEqual } from './crypto.mjs';
 import { createUnprovenDeployTx, createUnprovenCallTxFromInitialStates, getPublicStates } from '@midnight-ntwrk/midnight-js-contracts';
 import { Transaction, Intent, rawTokenType, createShieldedCoinInfo } from '@midnight-ntwrk/midnight-js-protocol/ledger';
 import { encodeRawTokenType, encodeShieldedCoinInfo, encodeCoinPublicKey } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
@@ -91,6 +91,38 @@ export function paymentReceiptExpectation(pending, confirmed, tokenId) {
     throw new Error('Pending recipient amount differs from captured private candidate');
   }
   return BigInt(amount);
+}
+
+/** Checkpoint one new administrative execution before proving and before send.
+ * The callback may only prove/balance; it must never submit. A rejection from
+ * that live callback proves this execution has not crossed the send boundary.
+ * Restored records and every error after a signed result remain unresolved. */
+export async function checkpointAdministrativeTransaction({ store, kind, data, proveAndBalance }) {
+  const prepared = structuredClone({ executionId: crypto.randomUUID(), kind, phase: 'prepared', candidate: data.candidate,
+    unproven: data.unproven?.serialize() ?? null, signed: data.signed?.serialize() ?? null, transactionIds: [] });
+  await store.update(state => {
+    if (state.uncertain || state.runner?.pending) throw new WalletError('REQUEST_UNRESOLVED');
+    state.uncertain = structuredClone(prepared);
+  }); // A failed/ambiguous storage commit must never enter the cancellation path.
+  let signed = data.signed;
+  if (!signed) {
+    try { signed = await proveAndBalance(data.unproven); }
+    catch (error) {
+      // Only this invocation owns this exact unsigned checkpoint. Do not clear
+      // a replacement, concurrent payment, restored checkpoint, or signed state.
+      await store.update(state => {
+        if (state.runner?.pending || !isDeepStrictEqual(state.uncertain, prepared)) throw new WalletError('REQUEST_UNRESOLVED');
+        state.uncertain = null;
+      }); // Completion, not a callback/request success, establishes durable clear.
+      throw error;
+    }
+  }
+  const ids = signed.identifiers();
+  await store.update(state => {
+    if (state.runner?.pending || !isDeepStrictEqual(state.uncertain, prepared)) throw new WalletError('REQUEST_UNRESOLVED');
+    state.uncertain = { ...structuredClone(prepared), signed: signed.serialize(), transactionIds: ids, phase: 'submitting' };
+  });
+  return { signed, ids };
 }
 function compiled(name, module, supplied, assetBase) {
   return CompiledContract.make(name, module.Contract).pipe(CompiledContract.withWitnesses(supplied ?? {}),
@@ -199,13 +231,8 @@ export class BrowserDemoService {
     this.#stage(`preparing-${kind}`);
     const data = await prepared();
     await this.#assertSession(true);
-    await this.#vault.update((state) => {
-      if (state.uncertain || state.runner?.pending) throw new WalletError('REQUEST_UNRESOLVED');
-      state.uncertain = { kind, phase: 'prepared', candidate: data.candidate,
-      unproven: data.unproven?.serialize() ?? null, signed: data.signed?.serialize() ?? null, transactionIds: [] }; });
-    const signed = data.signed ?? await this.#owner.balanceTx(await provider.proofProvider.proveTx(data.unproven, { timeout: 180_000 }));
-    const ids = signed.identifiers();
-    await this.#vault.update((state) => { state.uncertain.signed = signed.serialize(); state.uncertain.transactionIds = ids; state.uncertain.phase = 'submitting'; });
+    const { signed, ids } = await checkpointAdministrativeTransaction({ store: this.#vault, kind, data,
+      proveAndBalance: async unproven => this.#owner.balanceTx(await provider.proofProvider.proveTx(unproven, { timeout: 180_000 })) });
     this.#stage('submitting-to-preview');
     await this.#assertSession(true);
     const id = await bounded(this.#owner.submitTx(signed), 60_000);

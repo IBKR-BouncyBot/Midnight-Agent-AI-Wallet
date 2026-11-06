@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { BrowserRunnerStore, BrowserRequestJournal } from '../packages/browser-demo/stores.mjs';
-import { BrowserDemoService, createInitialState, PREVIEW, merchantReceiptTotals, paymentReceiptExpectation } from '../packages/browser-demo/service.mjs';
+import { BrowserDemoService, createInitialState, PREVIEW, merchantReceiptTotals, paymentReceiptExpectation,
+  checkpointAdministrativeTransaction } from '../packages/browser-demo/service.mjs';
 import { createMerchantObserver } from '../packages/browser-demo/observer.mjs';
 import { createMerchantReceiptVerifier } from '../packages/browser-demo/receipt-verifier.mjs';
 import { createRunnerState, PaymentRunner } from '../services/runner/payment-runner.mjs';
@@ -92,6 +93,116 @@ test('failed commit preserves the old openings and administrative uncertainty bl
   await root.update(state => { state.uncertain = { kind: 'owner-withdraw', phase: 'submitting' }; });
   await assert.rejects(store.checkpoint(before), error => error.code === 'REQUEST_UNRESOLVED');
   assert.deepEqual(store.snapshot(), before); await store.close();
+});
+
+// These byte fixtures exercise the production administrative checkpoint boundary,
+// not proving, native transaction validity, Lace behavior, or chain acceptance.
+const administration = () => ({ candidate: { address: context.contractAddress, privateState: confirmed() },
+  unproven: { serialize: () => new Uint8Array([1, 2, 3]) } });
+const signedAdministration = () => ({ identifiers: () => ['00' + 'de'.repeat(32)], serialize: () => new Uint8Array([4, 5, 6]) });
+
+test('live proving or wallet-approval rejection clears only the current unsigned administrative attempt', async () => {
+  for (const failedStage of ['proof', 'wallet-approval']) {
+    const store = memoryRoot(); const before = store.snapshot(); let proofs = 0, approvals = 0;
+    await assert.rejects(checkpointAdministrativeTransaction({ store, kind: 'deploy-token', data: administration(),
+      proveAndBalance: async () => {
+        assert.equal(store.snapshot().uncertain.phase, 'prepared'); proofs++;
+        if (failedStage === 'proof') throw new Error('Proof cancelled');
+        approvals++; throw new Error('Wallet approval declined');
+      } }), failedStage === 'proof' ? /Proof cancelled/ : /Wallet approval declined/);
+    assert.deepEqual(store.snapshot(), before); assert.equal(proofs, 1); assert.equal(approvals, failedStage === 'proof' ? 0 : 1);
+    // A later explicit invocation is permitted, without retrying automatically.
+    let explicitlyRetried = 0;
+    await checkpointAdministrativeTransaction({ store, kind: 'deploy-token', data: administration(),
+      proveAndBalance: async () => { explicitlyRetried++; return signedAdministration(); } });
+    assert.equal(explicitlyRetried, 1); assert.equal(store.snapshot().uncertain.phase, 'submitting');
+  }
+});
+
+test('administrative cancellation remains unresolved until its clearing write durably completes', async () => {
+  const root = memoryRoot(); let reachedClear, releaseClear, finished = false;
+  const clearing = new Promise(resolve => { reachedClear = resolve; });
+  const held = new Promise(resolve => { releaseClear = resolve; });
+  const store = { update(change) { return root.update(async state => {
+    await change(state); if (state.uncertain === null) { reachedClear(); await held; }
+  }); } };
+  const work = checkpointAdministrativeTransaction({ store, kind: 'owner-pause', data: administration(),
+    proveAndBalance: async () => { throw new Error('Approval declined'); } }).finally(() => { finished = true; });
+  const rejection = assert.rejects(work, /Approval declined/);
+  await clearing;
+  assert.equal(finished, false); assert.equal(root.snapshot().uncertain.phase, 'prepared');
+  assert.equal(root.snapshot().uncertain.signed, null); releaseClear(); await rejection;
+  assert.equal(root.snapshot().uncertain, null);
+});
+
+test('administrative storage failures and errors after a signed result never clear uncertainty', async () => {
+  const initialFailure = memoryRoot(); initialFailure.failNextCommit(); let invoked = false;
+  await assert.rejects(checkpointAdministrativeTransaction({ store: initialFailure, kind: 'fund', data: administration(),
+    proveAndBalance: async () => { invoked = true; return signedAdministration(); } }), /Injected commit failure/);
+  assert.equal(invoked, false);
+  for (const boundary of ['clear-write', 'signed-write', 'signed-serialization']) {
+    const store = memoryRoot();
+    await assert.rejects(checkpointAdministrativeTransaction({ store, kind: 'owner-withdraw', data: administration(),
+      proveAndBalance: async () => {
+        if (boundary === 'signed-serialization') return { ...signedAdministration(), serialize() { throw new Error('Signed serialization failed'); } };
+        store.failNextCommit();
+        if (boundary === 'clear-write') throw new Error('Approval declined');
+        return signedAdministration();
+      } }), boundary === 'signed-serialization' ? /Signed serialization failed/ : /Injected commit failure/);
+    assert.equal(store.snapshot().uncertain.phase, 'prepared'); assert.equal(store.snapshot().uncertain.signed, null);
+  }
+  // An ambiguous commit error may arrive after persistence. No compensating clear.
+  const committed = memoryRoot();
+  const store = { async update(change) { await committed.update(change);
+    if (committed.snapshot().uncertain?.phase === 'submitting') throw new Error('Commit acknowledgement lost'); } };
+  await assert.rejects(checkpointAdministrativeTransaction({ store, kind: 'fund', data: administration(),
+    proveAndBalance: async () => signedAdministration() }), /Commit acknowledgement lost/);
+  assert.equal(committed.snapshot().uncertain.phase, 'submitting');
+  assert.deepEqual(committed.snapshot().uncertain.signed, new Uint8Array([4, 5, 6]));
+});
+
+test('administrative rejection cannot clear a changed record or concurrent runner checkpoint', async () => {
+  for (const change of [state => { state.uncertain.executionId = crypto.randomUUID(); },
+    state => { state.uncertain.candidate.privateState.privateState.state.spent = 9n; },
+    state => { state.uncertain.signed = new Uint8Array([9]); },
+    state => { state.runner = { pending: { phase: 'prepared' } }; }]) {
+    const store = memoryRoot(); let protectedState;
+    await assert.rejects(checkpointAdministrativeTransaction({ store, kind: 'owner-pause', data: administration(),
+      proveAndBalance: async () => { await store.update(change); protectedState = store.snapshot(); throw new Error('Approval declined'); }
+    }), error => error.code === 'REQUEST_UNRESOLVED');
+    assert.deepEqual(store.snapshot(), protectedState);
+  }
+});
+
+test('existing administrative checkpoints are never cleared or resent by a new execution', async () => {
+  for (const phase of ['prepared', 'submitting', 'submitted']) {
+    const store = memoryRoot(); const pending = { executionId: crypto.randomUUID(), kind: 'fund', phase,
+      candidate: administration().candidate, unproven: new Uint8Array([1, 2, 3]),
+      signed: phase === 'prepared' ? null : new Uint8Array([4, 5, 6]), transactionIds: phase === 'prepared' ? [] : signedAdministration().identifiers() };
+    await store.update(state => { state.uncertain = pending; }); const before = store.snapshot(); let called = false;
+    await assert.rejects(checkpointAdministrativeTransaction({ store, kind: 'fund', data: administration(),
+      proveAndBalance: async () => { called = true; return signedAdministration(); } }), error => error.code === 'REQUEST_UNRESOLVED');
+    assert.equal(called, false); assert.deepEqual(store.snapshot(), before);
+  }
+});
+
+test('administrative signed checkpoint persists exact bytes and IDs before any submission attempt', async () => {
+  const root = memoryRoot(); let attempts = 0, reachedSigned, releaseSigned, before;
+  const signing = new Promise(resolve => { reachedSigned = resolve; });
+  const held = new Promise(resolve => { releaseSigned = resolve; });
+  const store = { update(change) { return root.update(async state => {
+    await change(state); if (state.uncertain?.phase === 'submitting') { reachedSigned(); await held; }
+  }); } };
+  const work = checkpointAdministrativeTransaction({ store, kind: 'fund', data: administration(),
+    proveAndBalance: async () => signedAdministration() }).then(({ signed, ids }) => {
+    attempts++; before = root.snapshot(); assert.equal(before.uncertain.phase, 'submitting');
+    assert.deepEqual(before.uncertain.signed, signed.serialize()); assert.deepEqual(before.uncertain.transactionIds, ids);
+    throw new Error('Submission response lost');
+  });
+  const rejection = assert.rejects(work, /Submission response lost/);
+  await signing; assert.equal(attempts, 0); assert.equal(root.snapshot().uncertain.phase, 'prepared');
+  releaseSigned(); await rejection;
+  assert.equal(attempts, 1); assert.deepEqual(root.snapshot(), before);
 });
 
 test('browser runner keeps signed bytes before one send and restart only observes the existing candidate', async () => {
@@ -222,7 +333,7 @@ test('receipt-verifier setup retains the exact existing identity and opaque lega
     const fixture = serviceFixture();
     await fixture.store.update(state => {
       state.merchantSnapshot = 'opaque-existing-SDK-snapshot-do-not-replay-or-replace';
-      state.uncertain = { kind: 'deploy-token', phase: 'submitting', signed: new Uint8Array([1, 2, 3]), transactionIds: ['00' + 'ee'.repeat(32)] };
+      state.uncertain = { kind: 'deploy-token', phase: 'prepared', signed: null, transactionIds: [] };
       state.journal.records = [{ paymentId: 'saved-request', status: 'requested' }];
     });
     const before = fixture.store.snapshot(); service = await BrowserDemoService.create(fixture);

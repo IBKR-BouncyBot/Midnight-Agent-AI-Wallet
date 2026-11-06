@@ -9,8 +9,8 @@ The confidential-custody milestone passed on an isolated **local** Midnight ledg
 | Native compilation | Compact 0.31.1 generated contract JavaScript, ZKIR and full prover/verifier artifacts for all seven vault circuits and the test-token circuit. |
 | Generated runtime / on-chain VM | The original local milestone passed 32 tests, including limits, authority, replay, stale-state rejection, actual transcript partitioning and maintenance signatures. |
 | Protocol, storage and runner | The original local milestone passed 50 tests after candidate-binding and recovery-context review fixes. Mock adapter outcomes are explicitly test doubles. |
-| Full unit/native command | Latest `npm test`: **171 passed**, zero failed/skipped. The earlier Preview/Node milestone passed 102; the original local milestone passed 82. |
-| Browser automated suite | Latest `npm run test:browser`: **72 passed**, zero failed/skipped. Controlled wallet/worker/storage doubles and native structural/constraint checks; not live Lace settlement. |
+| Full unit/native command | Latest `npm test`: **177 passed**, zero failed/skipped. The earlier Preview/Node milestone passed 102; the original local milestone passed 82. |
+| Browser automated suite | Latest `npm run test:browser`: **78 passed**, zero failed/skipped. Controlled wallet/worker/storage doubles and native structural/constraint checks; not live Lace settlement. |
 | Static build / web checks | Full static build passed; **59** local links checked, with syntax, element-ID and content-security-policy checks passing. |
 | Browser WASM proof | Actual Chromium Web Worker: synthetic `mint` constraint check passed, 28 public inputs, 4,501-byte proof in 21,971 ms; wrong key rejected. No proof server or network submission. [Measured result](evidence/browser-proving.json). |
 | Browser payment circuit | Actual Chromium Web Worker: synthetic `pay` constraint check passed, 125 inputs, 4,501-byte proof in 202,453 ms; wrong key rejected. The fixture does not exercise actual Zswap membership or wallet/DUST proofs. [Measured result](evidence/browser-payment-proving.json). |
@@ -205,8 +205,15 @@ this checks native parsing, effect binding and authenticated recipient
 decryption, not local proof verification or consensus acceptance.
 [Receipt evidence](evidence/browser-receipt-verification.json).
 
-The revision passed **171** full-suite and **72** browser-suite tests, each with
-zero failures or skips, plus the static build and **59** checked web links. These
+The latest revision passed **177** full-suite and **78** browser-suite tests,
+each with zero failures or skips. Added administrative-cancellation tests check
+that a live proof/approval rejection clears only the same invocation's identical
+unsigned checkpoint after durable persistence. Changed or restored checkpoints,
+storage failures and signed/submitted outcomes stay unresolved; no transaction
+is automatically resent. These tests do not establish crash-before-sign recovery
+or a real Lace cancellation flow.
+
+The static build and **59** checked web links also passed. These
 checks and the user's reported Lace connection still do not establish a
 complete browser payment. The earlier Node settlement evidence below remains
 separate.

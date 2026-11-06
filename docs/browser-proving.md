@@ -114,6 +114,12 @@ Creating a store can also fail after its database schema exists but before its
 first snapshot commits. The app refuses silent identity replacement in that
 case.
 
+During a live setup or owner action, a proof failure or declined Lace approval
+can clear that invocation's identical unsigned checkpoint, only after the
+clearing write commits. Nothing is resent automatically. A storage failure, a
+signed result, or an older/restored checkpoint remains unresolved. This does not
+recover a tab crash before transaction identifiers were saved.
+
 ## Continue an existing session
 
 Choose **Unlock my saved session**, using the same Lace Preview account and
@@ -191,12 +197,12 @@ finality envelope was fabricated and its proofs were **invalid placeholders**.
 It demonstrates the verifier's local work, not proof validity or chain
 acceptance. [Measured receipt verification](evidence/browser-receipt-verification.json).
 
-`npm run test:browser` passed **72 tests**, with zero failures or skips. The suite
+`npm run test:browser` passed **78 tests**, with zero failures or skips. The suite
 additionally covers account/network changes, proving
 mode confirmation, substituted signed transactions, native serialization,
 checkpoint ordering and encrypted recovery. Its wallet responses and some
-IndexedDB events are controlled doubles. The full `npm test` run passed **171
-tests**; the static build and all **59** checked web links also passed. See the
+IndexedDB events are controlled doubles. The full `npm test` run passed **177
+tests**. The static build and all **59** checked web links also passed. See the
 [verification record](verification.md).
 
 The existing [public Preview payment](evidence/preview-payment.json) and
