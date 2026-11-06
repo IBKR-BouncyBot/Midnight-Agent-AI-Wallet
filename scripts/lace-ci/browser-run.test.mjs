@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { APP_URL, validateEnvironment, parseArgs, atomicInteger, validatePrivateMetadata, publicStepEvidence, bootstrapStorageDecision } from './browser-run.mjs';
+import { APP_URL, validateEnvironment, parseArgs, atomicInteger, validatePrivateMetadata, publicStepEvidence, bootstrapStorageDecision, classifyUiFailure } from './browser-run.mjs';
 
 const env = { CI:'true', GITHUB_ACTIONS:'true', RUNNER_OS:'Linux', GITHUB_REPOSITORY:'IBKR-BouncyBot/Midnight-Agent-AI-Wallet', GITHUB_RUN_ID:'123', RUNNER_TEMP:'/tmp/runner' };
 test('browser execution requires the isolated GitHub repository runner', () => {
@@ -54,4 +54,10 @@ test('resume never replaces an existing or unauthenticated app session', () => {
     assert.throws(()=>bootstrapStorageDecision({mode:'resume-bootstrap',openResult}));
   assert.throws(()=>bootstrapStorageDecision({mode:'resume-bootstrap',openResult:'missing',appSessionCreated:true}));
   assert.throws(()=>bootstrapStorageDecision({mode:'exercise',openResult:'missing'}));
+});
+test('UI failure diagnostics expose only fixed booleans, never raw error details', () => {
+  const result = classifyUiFailure({ name:'TimeoutError', message:'Timeout 30000ms exceeded. secret-password: abc; overlay intercepts pointer events; element is not enabled; detached from DOM' });
+  assert.deepEqual(result, {timeout:true,disabled:true,pointerIntercepted:true,detached:true,notVisible:false});
+  assert.equal(JSON.stringify(result).includes('secret-password'),false);
+  assert.deepEqual(classifyUiFailure({message:'unexpected private data'}), {timeout:false,disabled:false,pointerIntercepted:false,detached:false,notVisible:false});
 });

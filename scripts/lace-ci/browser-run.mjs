@@ -91,6 +91,16 @@ export function bootstrapStorageDecision({ mode, openResult, appSessionCreated =
   if (mode === 'resume-bootstrap' && openResult === 'missing' && !appSessionCreated) return 'create';
   throw new Stop('SAVED_APP_SESSION_REQUIRED');
 }
+export function classifyUiFailure(error) {
+  // Playwright messages may contain passwords/DOM. Inspect transiently; emit
+  // only this fixed boolean projection, never message/stack/call-log content.
+  const message = typeof error?.message === 'string' ? error.message : '';
+  return { timeout: error?.name === 'TimeoutError' || /Timeout [0-9]+ms exceeded/.test(message),
+    disabled: /not enabled|disabled/i.test(message),
+    pointerIntercepted: /intercepts pointer events|intercepted|not receiving pointer events/i.test(message),
+    detached: /not attached|detached from|element was detached/i.test(message),
+    notVisible: /not visible|outside of the viewport/i.test(message) };
+}
 async function exists(file) { try { await lstat(file); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; } }
 async function containedPath(root, requested, existing = false) {
   const absolute = path.resolve(requested);
@@ -172,13 +182,18 @@ export async function main(args = process.argv.slice(2), env = process.env) {
   const stage = async value => { report.stage = value; await save(); process.stdout.write(JSON.stringify({ stage: value, mode: options.mode }) + '\n'); };
   const persist = () => atomicJson(privateFile, metadata);
   let context, app, wallet;
+  let walletUnlockAttempted = false;
   const approved = new WeakSet();
   let approvals = 0;
   const origin = new URL(APP_URL).origin;
   async function uiStep(name, task) {
     await stage(name);
     try { return await task(); }
-    catch (error) { if (error instanceof Stop) throw error; throw new Stop('UI_' + name.replaceAll('-', '_').toUpperCase() + '_FAILED'); }
+    catch (error) {
+      report.uiFailures ??= []; report.uiFailures.push({ step:name, ...classifyUiFailure(error) }); report.uiFailures = report.uiFailures.slice(-12);
+      if (error instanceof Stop && error.code !== 'OBSERVATION_TIMEOUT') throw error;
+      throw new Stop('UI_' + name.replaceAll('-', '_').toUpperCase() + '_FAILED');
+    }
   }
   async function settingsDiagnostics() {
     if (!wallet || wallet.isClosed()) return;
@@ -187,13 +202,24 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     const selectors = ['settings-tab-btn', 'option-list-item-network', 'network-selection-sheet',
       'radio-button-testnet', 'radio-button-midnight-preview', 'network-selection-sheet-confirm-button',
       'option-list-item-midnight', 'midnight-settings-sheet-header', 'proof-server-in-process-radio',
-      'proof-server-in-process-radio-checkmark', 'save-configuration-button'];
+      'proof-server-in-process-radio-checkmark', 'save-configuration-button', 'authentication-prompt-body',
+      'authentication-prompt-input-value', 'authentication-prompt-button-confirm', 'authentication-prompt-button-cancel'];
     const controls = {};
     for (const id of selectors) {
       const locator = wallet.getByTestId(id); const count = await locator.count().catch(() => 0);
-      controls[id] = { count, visible: count === 1 && await visible(locator) };
+      controls[id] = { count, visible: count === 1 && await visible(locator),
+        enabled: count === 1 && await locator.isEnabled().catch(() => false) };
     }
     report.settingsControls = controls;
+    const tab = wallet.getByTestId('settings-tab-btn');
+    if (await tab.count() === 1) report.settingsHitTest = await tab.evaluate((element, allowlist) => {
+      const rect = element.getBoundingClientRect();
+      if (!rect.width || !rect.height) return { hasArea:false, targetHit:false, knownControl:null };
+      const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      let current = hit, knownControl = null;
+      while (current) { const id = current.getAttribute?.('data-testid'); if (allowlist.includes(id)) { knownControl = id; break; } current = current.parentElement; }
+      return { hasArea:true, targetHit:hit === element || element.contains(hit), knownControl };
+    }, selectors).catch(() => ({ unavailable:true }));
   }
   async function findSettingsItem(id) {
     const item = wallet.getByTestId(id);
@@ -212,6 +238,33 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     await input.waitFor({ state: 'visible', timeout: 60_000 });
     await input.fill(metadata.walletPassword);
     await page.getByTestId('authentication-prompt-button-confirm').click();
+    try {
+      await input.waitFor({ state:'hidden', timeout:60_000 });
+      await page.getByTestId('authentication-prompt-button-confirm').waitFor({ state:'hidden', timeout:60_000 });
+    } catch (error) { if (!page.isClosed()) throw error; }
+  }
+  async function unlockWalletIfVisible() {
+    if (!await visible(wallet.getByTestId('authentication-prompt-input-value'))) return false;
+    requireThat(!walletUnlockAttempted, 'WALLET_UNLOCK_ALREADY_ATTEMPTED');
+    walletUnlockAttempted = true;
+    await auth(wallet); report.walletUnlockConfirmed = true; await save(); return true;
+  }
+  async function openWalletSettings() {
+    await poll(async () => {
+      requireThat(!await visible(wallet.getByTestId('onboarding-start-create-wallet-button')), 'RESTORED_WALLET_MISSING');
+      await unlockWalletIfVisible();
+      const tab = wallet.getByTestId('settings-tab-btn');
+      try {
+        // Visibility alone is insufficient: the delayed authentication overlay
+        // can cover an already rendered settings tab. Never force this click.
+        await tab.click({ trial:true, timeout:1_000 });
+        await tab.click({ timeout:1_000 }); return true;
+      } catch (error) {
+        report.lastSettingsClickFailure = classifyUiFailure(error);
+        if (error?.name !== 'TimeoutError') throw error;
+        return false;
+      }
+    }, 60_000);
   }
   async function publicWallet() {
     // Read only documented PUBLIC methods of the genuine injected extension.
@@ -363,7 +416,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
         await wallet.getByTestId('midnight-settings-sheet-header').waitFor({ state:'hidden' });
       });
     }
-    await uiStep('open-wallet-settings', () => wallet.getByTestId('settings-tab-btn').click());
+    await uiStep('open-wallet-settings', openWalletSettings);
     await uiStep('open-network-sheet', async () => (await findSettingsItem('option-list-item-network')).click());
     await uiStep('select-testnet-network', () => wallet.getByTestId('radio-button-testnet').click());
     await uiStep('select-midnight-preview', () => wallet.getByTestId('radio-button-midnight-preview').click());
@@ -383,7 +436,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
       await uiStep('leave-existing-wasm-setting-unchanged', async () => {
         await wallet.goto(`chrome-extension://${EXTENSION_ID}/expo/index.html`);
         await wallet.getByTestId('midnight-settings-sheet-header').waitFor({ state:'hidden' });
-        await wallet.getByTestId('settings-tab-btn').click();
+        await openWalletSettings();
       });
     } else {
       await uiStep('select-in-app-wasm', () => radio.click());
@@ -429,12 +482,26 @@ export async function main(args = process.argv.slice(2), env = process.env) {
       await wallet.getByTestId('onboarding-create-wallet-toggle-midnight').click(); await delay(250);
       await wallet.getByTestId('onboarding-create-wallet-finish-button').click();
     } else {
-      await stage('unlock-exact-restored-wallet');
-      await poll(async () => {
-        requireThat(!await visible(wallet.getByTestId('onboarding-start-create-wallet-button')), 'RESTORED_WALLET_MISSING');
-        return await visible(wallet.getByTestId('settings-tab-btn')) || await visible(wallet.getByTestId('authentication-prompt-input-value'));
-      }, 90_000);
-      if (await visible(wallet.getByTestId('authentication-prompt-input-value'))) await auth(wallet);
+      await uiStep('unlock-exact-restored-wallet', async () => {
+        let readySince = null;
+        await poll(async () => {
+          requireThat(!await visible(wallet.getByTestId('onboarding-start-create-wallet-button')), 'RESTORED_WALLET_MISSING');
+          if (await unlockWalletIfVisible()) readySince = null;
+          try {
+            // A restored, genuinely clickable settings sheet is also ready:
+            // selectWasm() will close that known sheet before tab navigation.
+            const readyControl = await visible(wallet.getByTestId('network-selection-sheet-cancel-button'))
+              ? wallet.getByTestId('network-selection-sheet-cancel-button')
+              : await visible(wallet.getByTestId('midnight-settings-sheet-header'))
+                ? wallet.getByTestId('proof-server-in-process-radio') : wallet.getByTestId('settings-tab-btn');
+            await readyControl.click({ trial:true, timeout:1_000 });
+            readySince ??= Date.now(); return Date.now() - readySince >= 1_000;
+          } catch (error) {
+            readySince = null; report.lastSettingsClickFailure = classifyUiFailure(error);
+            if (error?.name !== 'TimeoutError') throw error; return false;
+          }
+        }, 90_000);
+      });
     }
     await wallet.getByTestId('settings-tab-btn').waitFor({ timeout: 180_000 });
     metadata.bootstrapProgress.walletCreated = true; await persist();
