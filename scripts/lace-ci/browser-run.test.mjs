@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { APP_URL, validateEnvironment, parseArgs, atomicInteger, validatePrivateMetadata, publicStepEvidence, bootstrapStorageDecision, classifyUiFailure, extractStaticControlIds,
-  requireOperationBudget, newActionTransactions, waitForReadyButton } from './browser-run.mjs';
+  requireOperationBudget, newActionTransactions, waitForReadyButton, sanitizePreviewConfiguration, previewPublicHost, parseSyncStatusLabel } from './browser-run.mjs';
 
 const env = { CI:'true', GITHUB_ACTIONS:'true', RUNNER_OS:'Linux', GITHUB_REPOSITORY:'IBKR-BouncyBot/Midnight-Agent-AI-Wallet', GITHUB_RUN_ID:'123', RUNNER_TEMP:'/tmp/runner' };
 
@@ -105,4 +105,26 @@ test('control inventory allowlist comes only from bounded static public IDs', ()
   assert.deepEqual(extractStaticControlIds(source), ['known-overlay','settings-tab-btn','static-modal']);
   assert.deepEqual(extractStaticControlIds('testID:"'+'a'.repeat(121)+'"'),[]);
   assert.deepEqual(extractStaticControlIds('testID:"not a control"'),[]);
+});
+test('public endpoint diagnostics redact credentials, query strings and unknown hosts or paths', () => {
+  const valid={indexerUri:'https://blockfrost.lw.iog.io/midnight-preview/',indexerWsUri:'wss://blockfrost.lw.iog.io/midnight-preview/ws',substrateNodeUri:'https://rpc.preview.midnight.network'};
+  const result=sanitizePreviewConfiguration(valid);
+  assert.equal(result.matchesKnownPreviewEndpoints,true);
+  assert.equal(result.substrateNodeUri,'https://rpc.preview.midnight.network/');
+  for(const indexerUri of ['https://secret@blockfrost.lw.iog.io/midnight-preview/','https://blockfrost.lw.iog.io/midnight-preview/?token=secret',
+    'https://blockfrost.lw.iog.io/private-secret','https://blockfrost.lw.iog.io.evil.example/midnight-preview/','http://127.0.0.1:1234/']) {
+    const redacted=sanitizePreviewConfiguration({...valid,indexerUri});assert.equal(redacted.indexerUri,null);assert.equal(redacted.matchesKnownPreviewEndpoints,false);
+    assert.equal(JSON.stringify(redacted).includes('secret'),false);
+  }
+});
+test('traffic evidence contains only fixed Preview host names', () => {
+  assert.equal(previewPublicHost('https://blockfrost.lw.iog.io/midnight-preview/?private=never-returned'),'blockfrost.lw.iog.io');
+  assert.equal(previewPublicHost('wss://indexer.preview.midnight.network/api/v4/graphql/ws'),'indexer.preview.midnight.network');
+  for(const url of ['https://unknown.example/','https://rpc.preview.midnight.network.evil.test/','not a URL','http://rpc.preview.midnight.network/'])assert.equal(previewPublicHost(url),null);
+});
+test('wallet sync diagnostic emits recognized states and bounded percentages only', () => {
+  assert.deepEqual(parseSyncStatusLabel('Syncing (6%)'),{state:'syncing',percent:6});
+  assert.deepEqual(parseSyncStatusLabel('Synced'),{state:'synced',percent:100});
+  assert.deepEqual(parseSyncStatusLabel('Errortry again'),{state:'error',percent:null});
+  for(const label of ['Syncing (101%)','secret wallet text','1234','Syncing (1.25%)'])assert.deepEqual(parseSyncStatusLabel(label),{state:'unrecognized',percent:null});
 });

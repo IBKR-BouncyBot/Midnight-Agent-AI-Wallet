@@ -17,6 +17,12 @@ const SCHEMA = 'lace-ci-private-session-v1';
 const OP_TIMEOUT = 25 * 60_000;
 const BROWSER_BUDGET = 300 * 60_000;
 const CLOSE_RESERVE = 5 * 60_000;
+const PREVIEW_ENDPOINTS = Object.freeze({
+  indexerUri: ['https://blockfrost.lw.iog.io/midnight-preview/', 'https://indexer.preview.midnight.network/api/v4/graphql'],
+  indexerWsUri: ['wss://blockfrost.lw.iog.io/midnight-preview/ws', 'wss://indexer.preview.midnight.network/api/v4/graphql/ws'],
+  substrateNodeUri: ['https://blockfrost.lw.iog.io/midnight-preview-rpc/', 'https://rpc.preview.midnight.network/', 'wss://rpc.preview.midnight.network/'],
+});
+const PREVIEW_HOSTS = Object.freeze(['blockfrost.lw.iog.io', 'indexer.preview.midnight.network', 'rpc.preview.midnight.network']);
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const now = () => new Date().toISOString();
@@ -123,6 +129,31 @@ export function extractStaticControlIds(source) {
   const ids = new Set();
   for (const match of source.matchAll(/\btestID\s*:\s*(['"`])([a-zA-Z][a-zA-Z0-9:_-]{0,119})\1/g)) ids.add(match[2]);
   return [...ids].sort();
+}
+export function sanitizePreviewConfiguration(config) {
+  const result = {};
+  for (const [field, allowed] of Object.entries(PREVIEW_ENDPOINTS)) {
+    let canonical = null;
+    try {
+      const value = new URL(config?.[field]);
+      if (!value.username && !value.password && !value.search && !value.hash && !value.port
+        && allowed.includes(value.href)) canonical = value.href;
+    } catch { /* Unknown endpoints are redacted, never logged. */ }
+    result[field] = canonical;
+  }
+  result.matchesKnownPreviewEndpoints = Object.keys(PREVIEW_ENDPOINTS).every(field => result[field] !== null);
+  return result;
+}
+export function previewPublicHost(value) {
+  try { const parsed = new URL(value); return ['https:', 'wss:'].includes(parsed.protocol) && PREVIEW_HOSTS.includes(parsed.hostname) ? parsed.hostname : null; }
+  catch { return null; }
+}
+export function parseSyncStatusLabel(value) {
+  if (value === 'Synced') return { state:'synced', percent:100 };
+  if (value === 'Error' || value === 'Errortry again' || value === 'Error try again') return { state:'error', percent:null };
+  const match = /^Syncing(?: \(([0-9]{1,3})%\))?$/.exec(value ?? '');
+  if (match && (match[1] === undefined || Number(match[1]) <= 100)) return { state:'syncing', percent:match[1] === undefined ? null : Number(match[1]) };
+  return { state:'unrecognized', percent:null };
 }
 async function knownExtensionControlIds(extensionDir) {
   const ids = new Set(); let totalBytes = 0, files = 0;
@@ -241,6 +272,78 @@ export async function main(args = process.argv.slice(2), env = process.env) {
   const approved = new WeakSet();
   let approvals = 0;
   const origin = new URL(APP_URL).origin;
+  report.previewNetwork = { observationBoundary:'Host counters cover requests exposed by Playwright, not all extension service-worker traffic. Anonymous probes use Node fetch and do not establish wallet sync or settlement.',
+    hosts:Object.fromEntries(PREVIEW_HOSTS.map(host=>[host,{requests:0,responses:0,requestFailures:0,http2xx:0,http3xx:0,http4xx:0,http5xx:0,webSocketsCreated:0,webSocketsClosed:0,webSocketErrors:0,webSocketFramesReceived:0}])) };
+  function installNetworkCounters() {
+    const counters = url => { const host = previewPublicHost(url); return host ? report.previewNetwork.hosts[host] : null; };
+    context.on('request', request => { const item=counters(request.url()); if(item)item.requests++; });
+    context.on('requestfailed', request => { const item=counters(request.url()); if(item)item.requestFailures++; });
+    context.on('response', response => { const item=counters(response.url()); if(!item)return;item.responses++;const group=Math.floor(response.status()/100);if(group>=2&&group<=5)item[`http${group}xx`]++; });
+    const attached = new WeakSet();
+    const attach = page => {
+      if(attached.has(page))return;attached.add(page);
+      page.on('websocket', socket => {
+        const item=counters(socket.url());if(!item)return;item.webSocketsCreated++;
+        socket.on('close',()=>{item.webSocketsClosed++;});socket.on('socketerror',()=>{item.webSocketErrors++;});
+        socket.on('framereceived',()=>{item.webSocketFramesReceived++;});
+      });
+    };
+    context.on('page',attach); for(const page of context.pages())attach(page);
+  }
+  async function syncUiSummary() {
+    // Source-confirmed public status pill; only known enums and numeric
+    // percentages leave the page, never arbitrary wallet text or balances.
+    const pill=wallet.getByTestId('sync-status-pill'),menu=wallet.getByTestId('main-menu-tab-btn');let opened=false;
+    try {
+      if(await pill.count()===0&&await visible(menu)) {
+        await menu.click({trial:true,timeout:2_000});await menu.click({timeout:2_000});opened=true;
+        await poll(async()=>await pill.count()>0,5_000);
+      }
+      const pills=await pill.allTextContents();
+      return pills.slice(0,8).map(text=>parseSyncStatusLabel(text.trim()));
+    } catch { return []; }
+    finally {
+      if(opened) {
+        // Close only the same public menu we opened; never choose a sync
+        // reset/retry/account action. Do not proceed to DUST with it covering UI.
+        try { await menu.click({timeout:5_000}); }
+        catch { throw new Stop('SYNC_DIAGNOSTIC_MENU_CLOSE_FAILED'); }
+      }
+    }
+  }
+  async function anonymousEndpointHealth(configuration) {
+    const targets = [
+      ['configured-indexer',configuration.indexerUri,'indexer'],
+      ['configured-node',configuration.substrateNodeUri?.replace(/^wss:/,'https:'),'node'],
+      ['canonical-indexer',PREVIEW_ENDPOINTS.indexerUri[1],'indexer'],
+      ['canonical-node',PREVIEW_ENDPOINTS.substrateNodeUri[1],'node'],
+    ];
+    return Promise.all(targets.map(async ([target,endpoint,kind]) => {
+      if(!endpoint)return {target,attempted:false};
+      const started=Date.now();let status=null;
+      try {
+        const response=await fetch(endpoint,{method:'POST',redirect:'error',headers:{'content-type':'application/json'},
+          body:JSON.stringify(kind==='indexer'?{query:'{ block { height } }'}:{jsonrpc:'2.0',id:1,method:'system_chain',params:[]}),signal:AbortSignal.timeout(15_000)});
+        status=response.status;
+        const bytes=await response.arrayBuffer();if(bytes.byteLength>64*1024)throw new Stop('PUBLIC_HEALTH_OVERSIZE');
+        const value=JSON.parse(Buffer.from(bytes).toString('utf8'));
+        const height=kind==='indexer'?value?.data?.block?.height:null;
+        const validHeight=(typeof height==='number'&&Number.isSafeInteger(height)&&height>=0)||(typeof height==='string'&&/^[0-9]{1,16}$/.test(height));
+        return {target,attempted:true,status,reachable:true,validResponse:response.ok&&(kind==='indexer'?validHeight&&!value.errors:typeof value?.result==='string'&&!value.error),
+          ...(kind==='indexer'&&validHeight?{blockHeight:String(height)}:{}),...(kind==='node'?{previewChain:typeof value?.result==='string'&&/preview/i.test(value.result)}:{}),durationMs:Date.now()-started};
+      } catch(error) { return {target,attempted:true,status,reachable:status!==null,validResponse:false,
+        failure:error?.name==='TimeoutError'||error?.name==='AbortError'?'timeout':status===null?'network':'invalid-response',durationMs:Date.now()-started}; }
+    }));
+  }
+  async function fundingObservation(current) {
+    const sample = {at:now(),nightAtomic:current.nightAtomic,dustAtomic:current.dustAtomic,dustCapAtomic:current.dustCapAtomic,
+      configuration:current.configuration,syncUi:await syncUiSummary(),health:await anonymousEndpointHealth(current.configuration),
+      traffic:structuredClone(report.previewNetwork.hosts)};
+    report.fundingObservations ??= [];report.fundingObservations.push(sample);report.fundingObservations=report.fundingObservations.slice(-20);
+    await save();process.stdout.write(JSON.stringify({stage:'observe-preview-wallet-funding',at:sample.at,
+      nightAtomic:sample.nightAtomic,dustAtomic:sample.dustAtomic,dustCapAtomic:sample.dustCapAtomic,syncUi:sample.syncUi,
+      configuration:sample.configuration,health:sample.health,traffic:sample.traffic})+'\n');
+  }
   async function uiStep(name, task) {
     await stage(name);
     try { return await task(); }
@@ -349,11 +452,13 @@ export async function main(args = process.argv.slice(2), env = process.env) {
         api.getConfiguration(), api.getConnectionStatus(), api.getDustAddress(), api.getUnshieldedAddress(), api.getDustBalance(), api.getUnshieldedBalances()]);
       return { apiVersion: wallet.apiVersion, networkId: config.networkId, connectionStatus: connection.status,
         connectionNetwork: connection.networkId, remoteProverReported: Boolean(config.proverServerUri || config.proverURI || config.proverUri),
+        configuration:{indexerUri:config.indexerUri,indexerWsUri:config.indexerWsUri,substrateNodeUri:config.substrateNodeUri},
         unshieldedAddress: unshielded.unshieldedAddress, dustAddress: dust.dustAddress,
         // Pinned ledger-v8 nativeToken().raw is the zero 32-byte unshielded color.
         nightAtomic: String(unshieldedBalances['0'.repeat(64)] ?? 0n),
         dustAtomic: String(balance.balance), dustCapAtomic: String(balance.cap) };
     }));
+    result.configuration=sanitizePreviewConfiguration(result.configuration);
     requireThat(/^4\./.test(result.apiVersion) && result.networkId === 'preview' && result.connectionNetwork === 'preview'
       && result.connectionStatus === 'connected' && result.remoteProverReported === false, 'PUBLIC_WALLET_CONTEXT_MISMATCH');
     requireThat(/^mn_addr_preview1[0-9a-z]+$/.test(result.unshieldedAddress) && /^mn_dust_preview1[0-9a-z]+$/.test(result.dustAddress), 'PUBLIC_ADDRESS_INVALID');
@@ -508,6 +613,13 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     requireThat((await uiPublic()).phase !== 'unresolved', 'APP_RESTORED_OUTCOME_UNRESOLVED');
   }
   async function selectWasm() {
+    const isSelected = async id => {
+      const control=wallet.getByTestId(id);
+      if(!await visible(control))return false;
+      return await control.evaluate(el=>el.getAttribute('aria-selected')==='true'||el.getAttribute('aria-checked')==='true'
+        ||el.querySelector('[aria-checked="true"],input:checked')!==null)
+        ||await visible(wallet.getByTestId(id+'-checkmark'));
+    };
     // Restored navigation may retain a settings sheet. Only known, harmless
     // settings controls are used to close it; never approve a transaction.
     if (await visible(wallet.getByTestId('network-selection-sheet-cancel-button')))
@@ -520,12 +632,20 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     }
     await uiStep('open-wallet-settings', openWalletSettings);
     await uiStep('open-network-sheet', async () => (await findSettingsItem('option-list-item-network')).click());
-    await uiStep('select-testnet-network', () => wallet.getByTestId('radio-button-testnet').click());
-    await uiStep('select-midnight-preview', () => wallet.getByTestId('radio-button-midnight-preview').click());
-    await uiStep('save-preview-network', async () => {
-      await wallet.getByTestId('network-selection-sheet-confirm-button').click();
-      await wallet.getByTestId('network-selection-sheet').waitFor({ state: 'hidden' });
-    });
+    await wallet.getByTestId('radio-button-testnet').waitFor({state:'visible'});
+    if(await isSelected('radio-button-testnet')&&await isSelected('radio-button-midnight-preview')) {
+      await uiStep('leave-existing-preview-network-unchanged',async()=>{
+        await wallet.getByTestId('network-selection-sheet-cancel-button').click();
+        await wallet.getByTestId('network-selection-sheet').waitFor({state:'hidden'});
+      });
+    } else {
+      await uiStep('select-testnet-network', () => wallet.getByTestId('radio-button-testnet').click());
+      await uiStep('select-midnight-preview', () => wallet.getByTestId('radio-button-midnight-preview').click());
+      await uiStep('save-preview-network', async () => {
+        await wallet.getByTestId('network-selection-sheet-confirm-button').click();
+        await wallet.getByTestId('network-selection-sheet').waitFor({ state: 'hidden' });
+      });
+    }
     metadata.bootstrapProgress.previewSelected = true; await persist();
     await uiStep('open-midnight-proving-settings', async () => (await findSettingsItem('option-list-item-midnight')).click());
     const radio = wallet.getByTestId('proof-server-in-process-radio');
@@ -570,6 +690,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     context = await chromium.launchPersistentContext(path.join(stateDir, 'profile'), {
       channel: 'chromium', headless: true, args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`],
       viewport: { width: 1280, height: 960 }, locale: 'en-US', acceptDownloads: true, downloadsPath: path.join(stateDir, 'downloads') });
+    installNetworkCounters();
     context.setDefaultTimeout(30_000); report.chromium = context.browser()?.version() ?? 'not-exposed';
     wallet = await context.newPage(); await wallet.goto(`chrome-extension://${EXTENSION_ID}/expo/index.html`);
     if (options.mode === 'bootstrap') {
@@ -634,7 +755,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     // Never forward Playwright exceptions: they may include input values or DOM.
     report.status = 'stopped'; report.stopCode = error instanceof Stop ? error.code : 'BROWSER_STEP_FAILED';
     await settingsDiagnostics().catch(() => {});
-    if (report.stopCode === 'PREVIEW_NIGHT_FUNDING_REQUIRED') report.nextAction = 'Fund the recorded disposable Preview NIGHT address, then restore this exact encrypted profile. No designation or app transaction was sent.';
+    if (report.stopCode === 'PREVIEW_NIGHT_NOT_OBSERVED') report.nextAction = 'The wallet API did not observe NIGHT within the read-only wait. Inspect endpoint and sync evidence; retain this exact profile. This does not imply that the confirmed funding transfer is missing. No designation or app transaction was sent.';
     report.uncertainAction = metadata.pendingAction?.step ?? null; process.exitCode = 1;
     if (report.stopCode === 'INSUFFICIENT_OPERATION_BUDGET') report.nextAction = 'Continue from this exact cleanly closed encrypted profile in a new run. No next action was started.';
   } finally {
@@ -738,14 +859,23 @@ export async function main(args = process.argv.slice(2), env = process.env) {
   }
   async function generateDust() {
     if (metadata.completedSteps.includes('generate-dust')) throw new Stop('EXISTING_DUST_DESIGNATION_NOT_READY');
-    await stage('generate-dust-in-real-lace');
-    try { await poll(async () => BigInt((await publicWallet()).nightAtomic) > 0n, 300_000); }
-    catch (error) { if (error instanceof Stop && error.code === 'OBSERVATION_TIMEOUT') throw new Stop('PREVIEW_NIGHT_FUNDING_REQUIRED'); throw error; }
-    await wallet.goto(`chrome-extension://${EXTENSION_ID}/expo/index.html`);
+    await stage('observe-preview-wallet-funding');
+    requireOperationBudget(operationDeadline,15*60_000);
+    // Portfolio navigation exposes the real status pill without restarting
+    // the extension or its sync workers and without modifying settings.
     await wallet.getByTestId('portfolio-tab-btn').click();
+    const deadline=Date.now()+15*60_000;let lastSample=0,observed=false;
+    do {
+      const current=await publicWallet();observed=BigInt(current.nightAtomic)>0n;
+      if(Date.now()-lastSample>=60_000||observed){lastSample=Date.now();await fundingObservation(current);}
+      if(observed)break;
+      await delay(Math.min(5_000,Math.max(1,deadline-Date.now())));
+    } while(Date.now()<deadline);
+    requireThat(observed,'PREVIEW_NIGHT_NOT_OBSERVED');
+    await stage('generate-dust-in-real-lace');
     const button = wallet.getByTestId('account-card-generate-dust-button');
     await waitForReadyButton(button, 'FUNDED_DUST_CONTROL_NOT_READY');
-    requireThat(BigInt((await publicWallet()).nightAtomic) > 0n, 'PREVIEW_NIGHT_FUNDING_REQUIRED');
+    requireThat(BigInt((await publicWallet()).nightAtomic) > 0n, 'PREVIEW_NIGHT_NOT_OBSERVED');
     await button.click();
     const address = wallet.getByTestId('dust-address-input-value'); await address.waitFor();
     requireThat(await address.inputValue() === metadata.publicAddresses.dustAddress, 'DUST_RECIPIENT_MISMATCH');
