@@ -1,6 +1,6 @@
 # Verification record — 6 November 2026
 
-The confidential-custody milestone passed on an isolated **local** Midnight ledger, and the Node runner finalized a real public **Preview** payment with its merchant receipt and private vault change verified. The new browser path has separately produced actual WASM `mint` and `pay` proofs, passed an actual browser encrypted-storage probe, and connected its recipient observer to Preview. A complete browser/Lace payment remains untested. No Preprod/Mainnet deployment or live ChatGPT/Claude integration is claimed. The [acceptance matrix](acceptance-status.md) lists the remaining work.
+The confidential-custody milestone passed on an isolated **local** Midnight ledger, and the Node runner finalized a real public **Preview** payment with its merchant receipt and private vault change verified. The browser path has separately produced actual WASM `mint` and `pay` proofs and passed browser encrypted-storage checks. Following the user's slow-sync report, the primary browser flow now verifies the exact finalized recipient output without replaying history. Actual browser setup and synthetic receipt checks passed; a complete browser/Lace payment remains untested. No Preprod/Mainnet deployment or live ChatGPT/Claude integration is claimed. The [acceptance matrix](acceptance-status.md) lists the remaining work.
 
 ## Distinct gates
 
@@ -9,11 +9,15 @@ The confidential-custody milestone passed on an isolated **local** Midnight ledg
 | Native compilation | Compact 0.31.1 generated contract JavaScript, ZKIR and full prover/verifier artifacts for all seven vault circuits and the test-token circuit. |
 | Generated runtime / on-chain VM | The original local milestone passed 32 tests, including limits, authority, replay, stale-state rejection, actual transcript partitioning and maintenance signatures. |
 | Protocol, storage and runner | The original local milestone passed 50 tests after candidate-binding and recovery-context review fixes. Mock adapter outcomes are explicitly test doubles. |
-| Full unit/native command | Latest `npm test`: **155 passed**, zero failed/skipped. The earlier Preview/Node milestone passed 102; the original local milestone passed 82. |
-| Browser automated suite | `npm run test:browser`: **56 passed**, zero failed/skipped. Controlled wallet/worker/storage doubles and native structural/constraint checks; not live Lace settlement. |
+| Full unit/native command | Latest `npm test`: **171 passed**, zero failed/skipped. The earlier Preview/Node milestone passed 102; the original local milestone passed 82. |
+| Browser automated suite | Latest `npm run test:browser`: **72 passed**, zero failed/skipped. Controlled wallet/worker/storage doubles and native structural/constraint checks; not live Lace settlement. |
+| Static build / web checks | Full static build passed; **59** local links checked, with syntax, element-ID and content-security-policy checks passing. |
 | Browser WASM proof | Actual Chromium Web Worker: synthetic `mint` constraint check passed, 28 public inputs, 4,501-byte proof in 21,971 ms; wrong key rejected. No proof server or network submission. [Measured result](evidence/browser-proving.json). |
 | Browser payment circuit | Actual Chromium Web Worker: synthetic `pay` constraint check passed, 125 inputs, 4,501-byte proof in 202,453 ms; wrong key rejected. The fixture does not exercise actual Zswap membership or wallet/DUST proofs. [Measured result](evidence/browser-payment-proving.json). |
 | Browser Preview observer | Actual SDK WebSocket connection processed 2,409 events before stopping; partial history only, no receipt or full-sync claim. [Measured result](evidence/browser-observer.json). |
+| Browser recipient preparation | Production service setup took **89 ms after module loading**, with real Preview RPC, zero WebSockets/transaction actions and the legacy identity/snapshot preserved. Synthetic read-only Lace adapter and in-memory profile. [Measured result](evidence/browser-recipient-setup.json). |
+| Browser receipt verification | Key derivation **0.7 ms**, native receipt verification **30.9 ms**; matching output decrypted, wrong amount/recipient rejected. Fabricated finality and **invalid placeholder proofs**; no chain acceptance. [Measured result](evidence/browser-receipt-verification.json). |
+| User-reported browser session | Lace connection reported working. Recipient replay reached 16,078 / 285,045 events (5.6%) after about 30 minutes. This is a user observation, not a controlled full-sync benchmark or settlement result. |
 | Browser encrypted storage | Actual Chromium IndexedDB/WebCrypto/Web Locks: reopen, writer exclusion, wrong password, strict commit/abort, tamper/context rejection and encrypted backup restore passed with synthetic state. [Measured result](evidence/browser-storage.json). |
 | MCP subprocess | `node services/mcp/scripted-agent.mjs` passed its real stdio probe; payments unavailable, no model client or settlement exercised. |
 | Upstream proof/network baseline | Real `storeMessage` call finalized `SucceedEntirely`; resulting public state independently queried. [Raw record](evidence/upstream-smoke.json). |
@@ -161,6 +165,51 @@ localhost origins. This checks endpoint availability and CORS behavior; it does
 not establish a browser wallet connection, proof or settlement. Full Lace
 approval, internal fee proving, browser payment and actual termination recovery
 remain separate validation steps.
+
+## Recipient verification and the history-replay correction
+
+The initial browser flow required a fresh independent SDK wallet to replay all
+shielded events before setup. The user reported 5.6% progress after about
+30 minutes. The interface's earlier “several minutes” estimate was too optimistic
+and had not been established by the 2,409-event connection probe. That original
+evidence file remains unchanged. No complete replay benchmark or isolated
+performance cause is claimed.
+
+Read-only source inspection confirmed that `wallet-sdk-shielded` 3.0.2 starts
+fresh wallets at genesis; batch timeout and spacing are measured in milliseconds.
+The app ran its synchronous ledger replay on the page thread. The official
+indexer client uses a pushed WebSocket event stream with bounded buffering and
+subscription reopen; the wallet retries errors with exponential backoff.
+
+The revised browser flow prepares the existing recipient keys locally and checks
+the exact accepted payment output instead. Its received total means cumulative
+verified app receipts, not a synchronized wallet balance or proof that the
+recipient can currently spend those coins. The vault's next spend still requires
+independent current-state and qualified-change checks. No cursor is fabricated.
+Existing encrypted profiles retain their recipient seed, old `merchantSnapshot`,
+private openings, journals and pending signed bytes; users unlock that profile
+rather than creating a replacement or clearing storage.
+
+The actual production `BrowserDemoService.create/setup` path completed in
+**89 ms after module loading** in Chromium, using one real Preview RPC request,
+zero WebSocket connections and zero transaction actions. The existing identity
+and legacy snapshot remained unchanged. The test used a synthetic read-only Lace
+adapter and in-memory profile; it excludes download time, real Lace interaction
+and settlement. [Setup evidence](evidence/browser-recipient-setup.json).
+
+The actual browser's native receipt probe measured **0.7 ms** for key derivation
+and **30.9 ms** for verification. It decrypted the matching output, rejected a
+wrong amount and recipient key, and returned no scratch Merkle index. The
+finality envelope was synthetic and the proofs were **invalid placeholders**:
+this checks native parsing, effect binding and authenticated recipient
+decryption, not local proof verification or consensus acceptance.
+[Receipt evidence](evidence/browser-receipt-verification.json).
+
+The revision passed **171** full-suite and **72** browser-suite tests, each with
+zero failures or skips, plus the static build and **59** checked web links. These
+checks and the user's reported Lace connection still do not establish a
+complete browser payment. The earlier Node settlement evidence below remains
+separate.
 
 ## Demonstrated public Preview payment
 

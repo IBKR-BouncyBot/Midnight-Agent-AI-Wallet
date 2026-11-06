@@ -1,0 +1,18 @@
+{
+  "observedAt": "2026-11-06",
+  "environment": "Codex in-app Chromium browser on Windows, after module loading",
+  "schema": "midnight-browser-recipient-setup/v1",
+  "elapsedMs": 89,
+  "recipientReady": true,
+  "verificationMode": "finalized-output-decryption",
+  "legacyIdentityAndSnapshotPreserved": true,
+  "publicRpcRequests": 1,
+  "webSocketConnections": 0,
+  "transactionActions": 0,
+  "historyReplayRequired": false,
+  "syntheticLaceAdapter": true,
+  "realLaceConnectionTested": false,
+  "network": "preview",
+  "networkSubmission": "not-attempted",
+  "verificationBoundary": "Actual production service setup and public Preview RPC; synthetic read-only wallet adapter and in-memory legacy profile. Does not measure application download, a real Lace session or transaction settlement."
+}

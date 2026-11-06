@@ -7,10 +7,13 @@ import { browserWasmPlugin } from './browser-wasm-plugin.mjs';
 const root = resolve(import.meta.dirname, '..'), out = join(root, 'dist');
 const probe = process.argv.includes('--probe');
 const payProbe = process.argv.includes('--pay-probe');
+const receiptProbe = process.argv.includes('--receipt-probe');
 if (payProbe && !probe) throw new Error('--pay-probe requires --probe');
+if (receiptProbe && !probe) throw new Error('--receipt-probe requires --probe');
 await mkdir(out, { recursive: true });
 const assets = new Map();
 const entries = { 'proof-worker': 'packages/browser-prover/worker.mjs',
+  ...(receiptProbe ? {'setup-probe':'packages/browser-demo/setup-probe.mjs','receipt-probe':'packages/browser-demo/receipt-probe.mjs'} : {}),
   ...(probe ? { 'proof-probe': 'packages/browser-prover/probe.mjs', 'storage-probe':'packages/browser-storage/probe.mjs', 'observer-probe':'packages/browser-demo/observer-probe.mjs' } : { 'testnet-app': 'web/testnet.mjs' }) };
 for (const [name, entry] of Object.entries(entries)) {
   const result = await build({ absWorkingDir: root, entryPoints: [join(root, entry)], outfile: join(out, `${name}.mjs`),
@@ -45,6 +48,10 @@ await mkdir(join(out, 'browser-assets'), { recursive: true });
 for (const [file, bytes] of assets) await writeFile(join(out, file), bytes);
 await writeFile(join(out, 'browser-build.json'), JSON.stringify({ version: 1, proving: 'wasm-worker', hashes }, null, 2) + '\n');
 if (probe) {
+  if(receiptProbe){
+    await writeFile(join(out,'recipient-probe.html'),`<!doctype html><meta charset="utf-8"><title>Recipient verification check</title><h1>Browser recipient checks</h1><button id="setup">Check recipient setup</button><button id="receipt">Check receipt verification</button><p id="stage">Ready</p><pre id="result"></pre><script type="module" src="./recipient-probe-ui.mjs"></script>`);
+    await writeFile(join(out,'recipient-probe-ui.mjs'),`import {runBrowserSetupProbe} from './setup-probe.mjs';import {runBrowserReceiptProbe} from './receipt-probe.mjs';for(const [id,run] of [['setup',runBrowserSetupProbe],['receipt',runBrowserReceiptProbe]])document.getElementById(id).onclick=async()=>{document.querySelectorAll('button').forEach(b=>b.disabled=true);document.getElementById('stage').textContent='Checking';try{const result=await run({enabled:true});document.getElementById('result').textContent=JSON.stringify(result,null,2);document.getElementById('stage').textContent='Complete';}catch(e){document.getElementById('result').textContent=e.code||e.message||'CHECK_FAILED';document.getElementById('stage').textContent='Failed';}document.querySelectorAll('button').forEach(b=>b.disabled=false);};`);
+  }
   await writeFile(join(out,'observer-probe.html'),`<!doctype html><meta charset="utf-8"><title>Browser recipient check</title><h1>Actual Preview recipient observer</h1><button id="run">Check public Preview sync</button><p id="stage">Ready</p><pre id="result"></pre><script type="module" src="./observer-probe-ui.mjs"></script>`);
   await writeFile(join(out,'observer-probe-ui.mjs'),`import {runBrowserObserverProbe} from './observer-probe.mjs';document.querySelector('#run').onclick=async()=>{document.querySelector('#run').disabled=true;try{const r=await runBrowserObserverProbe({enabled:true,onStage:s=>document.querySelector('#stage').textContent=s});document.querySelector('#result').textContent=JSON.stringify(r,null,2);document.querySelector('#stage').textContent='Complete';}catch(e){document.querySelector('#stage').textContent='Failed';document.querySelector('#result').textContent=e.code||'OBSERVER_CHECK_FAILED';}document.querySelector('#run').disabled=false;};`);
   if (payProbe) {
@@ -58,9 +65,14 @@ if (probe) {
   await writeFile(join(out, 'proof-probe.html'), `<!doctype html><meta charset="utf-8"><title>Browser proof check</title><h1>Actual browser WASM proof</h1><button id="run">Generate test proof</button><p id="stage">Ready</p><pre id="result"></pre><script type="module" src="./proof-probe-ui.mjs"></script>`);
   await writeFile(join(out, 'proof-probe-ui.mjs'), `import { runBrowserProofProbe } from './proof-probe.mjs';document.querySelector('#run').onclick=async()=>{document.querySelector('#run').disabled=true;try{const r=await runBrowserProofProbe({workerUrl:'./proof-worker.mjs',contractBase:'./browser-contracts/test-token/',fixtureUrl:'./mint.preimage.bin',onStage:s=>document.querySelector('#stage').textContent=s});document.querySelector('#result').textContent=JSON.stringify(r,null,2);document.querySelector('#stage').textContent='Complete';}catch(e){document.querySelector('#stage').textContent='Failed';document.querySelector('#result').textContent=e.code||'PROOF_FAILED';}document.querySelector('#run').disabled=false;};`);
 } else {
+  // A changed page must never execute a cached bundle with obsolete element IDs
+  // or receipt semantics. The module URL changes with its exact contents.
+  const bundle = await readFile(join(out, 'testnet-app.mjs'));
+  const bundleName = `testnet-app-${createHash('sha256').update(bundle).digest('hex').slice(0,16)}.mjs`;
+  await writeFile(join(out,bundleName),bundle);
   const page = join(out, 'testnet.html');
-  await writeFile(page, (await readFile(page, 'utf8')).replace('src="./testnet.mjs"', 'src="./testnet-app.mjs"'));
+  await writeFile(page, (await readFile(join(root,'web/testnet.html'), 'utf8')).replace('src="./testnet.mjs"', `src="./${bundleName}"`));
   // The bundled entry is the only production copy; probes are local-only.
-  for (const name of ['testnet.mjs', 'proof-probe.html', 'proof-probe-ui.mjs', 'proof-probe.mjs', 'mint.preimage.bin', 'pay.preimage.bin','pay-probe.html','pay-probe-ui.mjs','storage-probe.html','storage-probe-ui.mjs','storage-probe.mjs','observer-probe.html','observer-probe-ui.mjs','observer-probe.mjs']) await rm(join(out, name), { force: true });
+  for (const name of ['testnet.mjs','testnet-app.mjs', 'proof-probe.html', 'proof-probe-ui.mjs', 'proof-probe.mjs', 'mint.preimage.bin', 'pay.preimage.bin','pay-probe.html','pay-probe-ui.mjs','storage-probe.html','storage-probe-ui.mjs','storage-probe.mjs','observer-probe.html','observer-probe-ui.mjs','observer-probe.mjs','recipient-probe.html','recipient-probe-ui.mjs','setup-probe.mjs','receipt-probe.mjs']) await rm(join(out, name), { force: true });
 }
 console.log(`Built real browser WASM with ${assets.size} binaries and ${Object.keys(hashes).length} circuit assets.`);

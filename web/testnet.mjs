@@ -92,14 +92,11 @@ function activityItem(item) {
   if (Number.isSafeInteger(item.blockHeight)) { const block = document.createElement('small'); block.textContent = `Indexed block ${item.blockHeight}`; element.append(block); }
   return element;
 }
-function renderWalletSync(_prefix, wallet) {
-  const progress=wallet?.syncProgress?.shielded;
-  const known=integer(progress?.applied)&&integer(progress?.target);
-  const ratio=known&&BigInt(progress.target)>0n?Math.min(100,Number(BigInt(progress.applied)*1000n/BigInt(progress.target))/10):null;
-  const bar=$('merchant-sync-bar');
-  if(ratio===null)bar.removeAttribute('value');else bar.value=ratio;
-  $('merchant-sync-summary').textContent=wallet?.synced?'Merchant observer is up to date':ratio===null?'Waiting for private history':`${ratio.toFixed(1)}% of recipient history processed`;
-  $('merchant-sync-shielded').textContent=known?`${pretty(progress.applied)} / ${pretty(progress.target)} events`:'The first synchronization can take several minutes.';
+function renderRecipient(recipient) {
+  $('merchant-summary').textContent=recipient?.ready?'Ready to verify payment receipts':'Prepare the recipient to start';
+  $('merchant-receipts').textContent=recipient?.ready
+    ? recipient.receiptHistoryComplete === false ? 'Saved receipt history is incomplete; totals are unavailable.' : `${Number.isSafeInteger(recipient.verifiedPaymentCount)?recipient.verifiedPaymentCount:0} verified payments · ${pretty(recipient.verifiedReceivedAtomic)} atomic units received`
+    : 'Each payment is checked against its finalized transaction.';
 }
 function render() {
   const busy = commandPending || Boolean(snapshot?.activeJob && !['complete','done','completed','succeeded','failed'].includes(snapshot.activeJob.status));
@@ -117,8 +114,8 @@ function render() {
   $('owner-withdraw').disabled = !connected || busy || uncertainPayment || caps.canWithdraw !== true;
   $('owner-pause').textContent = snapshot?.policy?.paused ? 'Resume agent' : 'Pause agent';
   const funding = snapshot?.funding;
-  $('wallet-sync').hidden = !connected || !(funding?.syncProgress || snapshot?.merchant?.syncProgress);
-  renderWalletSync('merchant', snapshot?.merchant);
+  $('recipient-check').hidden = !connected;
+  renderRecipient(snapshot?.merchant);
   $('funding-panel').hidden = !connected || typeof funding?.address !== 'string';
   $('funding-address').value = connected && typeof funding?.address === 'string' ? funding.address : '';
   $('dust').textContent = pretty(funding?.dustAtomic);
@@ -133,10 +130,11 @@ function render() {
   const records = connected && Array.isArray(snapshot?.activity) ? snapshot.activity.slice(-60).reverse() : [];
   $('activity').replaceChildren(...records.slice(0, 8).map(activityItem)); $('full-activity').replaceChildren(...records.map(activityItem));
   $('activity-empty').hidden = records.length > 0;
+  $('activity-empty').textContent=connected?'No transactions yet.':'Connect Lace to start.';
   $('activity-explanation').textContent = records.length ? `${records.length} operation records. Submission and finality remain distinct stages.` : 'No operation records are available yet.';
-  if (snapshot?.activeJob?.status === 'running' && snapshot.activeJob.stage === 'syncing-wallets') status('Synchronizing the independent recipient. Keep this page open; the first sync can take several minutes.');
-  else if (snapshot?.activeJob?.status === 'running') status(`The app is ${label(snapshot.activeJob.stage || snapshot.activeJob.action)}. Wait for its recorded result before continuing.`);
+  if (snapshot?.activeJob?.status === 'running') status(`The app is ${label(snapshot.activeJob.stage || snapshot.activeJob.action)}. Wait for its recorded result before continuing.`);
   else if (!commandPending && snapshot?.activeJob?.status === 'failed') status(`The app could not complete ${label(snapshot.activeJob.action)}. Check Lace, funding and any pending recovery before retrying.`, true);
+  else if (!commandPending && snapshot?.activeJob?.status === 'complete' && snapshot.activeJob.action === 'setup') status(caps.canBootstrap ? 'Recipient ready. Deploy and fund your test vault to continue.' : 'Recipient ready. Check Lace’s Preview DUST balance before deploying.');
   else if (!commandPending && snapshot?.activeJob?.status === 'complete') status(`${label(snapshot.activeJob.action)} completed. Inspect its recorded result in Activity; only a verified payment receipt establishes settlement.`);
 }
 async function refresh() {

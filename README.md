@@ -17,9 +17,11 @@ Open the public-testnet page in the browser where Lace is installed. In Lace's M
 
 Lace keeps its wallet keys and handles wallet approvals and fee proofs. The page proves the contract calls in a Web Worker and encrypts its private vault state in browser storage with a separate password. Save an encrypted backup: your Lace seed cannot recreate the contract's private openings. See [browser proving and setup](docs/browser-proving.md), including the limitation that Lace's API cannot independently confirm its proving mode.
 
+Recipient preparation does not wait for chain-wide history replay. The app checks the received output in the exact finalized payment and verifies the vault's change separately. Its verified-received total records app receipts, not a spendable wallet balance. If you already started a session, **unlock the existing profile** with the same Lace account and storage password; keep its encrypted backup and stored recovery state.
+
 **Earlier public Preview verification:** the local Node runner finalized a real vault payment in block **1627157**, with an independently synchronized merchant receipt and verified vault change. The [public transaction evidence](docs/evidence/preview-payment.json) records the actual 4,508-byte contract proof and matching ledger effects. This evidence belongs to that runner execution; it does not establish a completed browser-and-Lace payment.
 
-**Browser verification:** actual WASM mint and payment-circuit proofs completed in a desktop browser (about 22 seconds and 3 minutes 22 seconds). Encrypted backup/restore and a Preview observer connection also passed. These used synthetic proof fixtures; a full Lace-approved payment and mobile compatibility remain unverified. [Measured results](docs/verification.md).
+**Browser verification:** actual WASM mint and payment-circuit proofs completed in a desktop browser (about 22 seconds and 3 minutes 22 seconds). Encrypted backup/restore and a partial Preview observer connection also passed. The user subsequently confirmed a Lace connection. A full Lace-approved payment and mobile compatibility remain unverified; the proof timings used synthetic fixtures. [Measured results](docs/verification.md).
 
 The [local developer page](https://ibkr-bouncybot.github.io/Midnight-Agent-AI-Wallet/local.html) and [local runner setup](docs/testnet-demo.md) remain available as a separate fallback.
 

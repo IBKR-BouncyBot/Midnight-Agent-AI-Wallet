@@ -19,8 +19,8 @@ is a separate developer fallback with its own recorded settlement evidence.
    [Preview faucet](https://midnight-tmnight-preview.nethermind.dev/), then enable
    DUST generation in Lace. Complete the faucet verification yourself. NIGHT
    receipt alone does not mean DUST is ready for transaction fees.
-4. Synchronize the independent merchant observer, then deploy and fund the
-   test vault. Approve the setup transactions in Lace. The app deploys a test
+4. Prepare the recipient locally, then deploy and fund the test vault. Recipient
+   preparation does not replay the chain's history. Approve the setup transactions in Lace. The app deploys a test
    asset, removes the vault's maintenance authority before funding and verifies
    each finalized setup result.
 5. Request a payment and approve its wallet/fee operation in Lace. Keep the page
@@ -84,8 +84,13 @@ candidates and exact signed bytes before broadcast. The original contract
 actions and coin effects are checked against Lace's balanced response before it
 can be saved for submission.
 
-The merchant observer is a separate browser SDK shielded wallet used to verify
-receipt; it has no owner signing key or DUST wallet. This is still a single-device
+The recipient uses separate encryption keys to inspect the exact finalized
+payment output. Its keys stay in the browser; the app does not send a viewing key
+to an indexer. This receipt check has no owner signing key or DUST wallet and
+does not require a synchronized recipient wallet. The recorded received total
+counts verified payments from this app; it is not a current or spendable wallet
+balance. The vault's change still requires its own chain-state and Merkle-index
+verification before another spend. This is still a single-device
 research demonstration, not an independently hosted agent or audited wallet.
 Private browser storage protects data at rest, not against malicious code running
 in the same unlocked page or a compromised extension/device.
@@ -108,6 +113,40 @@ still need manual recovery; do not discard the saved state to force a retry.
 Creating a store can also fail after its database schema exists but before its
 first snapshot commits. The app refuses silent identity replacement in that
 case.
+
+## Continue an existing session
+
+Choose **Unlock my saved session**, using the same Lace Preview account and
+vault-storage password. Keep the existing encrypted profile and backup. Updating
+the page does not require a new wallet, a new vault or clearing browser storage.
+An earlier `merchantSnapshot` remains in the encrypted profile unchanged; the
+payment path no longer waits for that snapshot to replay the rest of Preview's
+history. The existing recipient seed, contract openings, pending transaction
+bytes and idempotency records remain associated with the same identity.
+
+If an operation was already submitted, use reconciliation to inspect that saved
+transaction. A page update does not authorize another send. Keep an older backup
+until a current encrypted backup has been saved successfully.
+
+## Why recipient history replay was removed
+
+The first browser version started a full SDK shielded wallet for the recipient.
+A user reported **16,078 of 285,045 events (5.6%) after about 30 minutes**. The
+earlier interface's “several minutes” estimate was not supported by a completed
+benchmark and should not be used as an expectation. The earlier diagnostic had
+stopped after only 2,409 events; it established connectivity, not full-sync speed.
+
+The pinned SDK starts a fresh wallet at genesis. Its batch `timeout: 5` and
+`spacing: 1` settings are milliseconds, and replay runs synchronous ledger WASM
+on the page thread. The event subscription also retries failures with backoff.
+Those source findings identify possible costs; they do not isolate the cause of
+the reported 30-minute delay. No complete history-replay benchmark was obtained.
+
+The browser payment flow instead verifies the received output in the already
+identified, successful transaction. It does not mark an empty wallet as synced,
+invent an event cursor or skip Merkle state needed for the vault's next spend.
+The old receive-only observer remains a developer diagnostic. A real wallet that
+needs its full spendable balance or history still needs an appropriate sync path.
 
 ## Verification boundary
 
@@ -137,18 +176,35 @@ events before the diagnostic stopped it. This checks SDK/network integration;
 it does not establish full synchronization or a payment receipt.
 [Measured observer connection](evidence/browser-observer.json).
 
-`npm run test:browser` passed **56 tests**, with zero failures or skips. The suite
+The revised production service prepared a recipient in **89 ms after module
+loading** in Chromium. It used the real Preview RPC, opened no WebSocket and
+performed no transaction action; the existing identity and legacy snapshot were
+preserved. This measurement used a synthetic read-only Lace adapter and an
+in-memory profile. It excludes application downloads, a real Lace session and
+settlement. [Measured recipient preparation](evidence/browser-recipient-setup.json).
+
+A separate real-browser receipt probe measured **0.7 ms** for recipient-key
+derivation and **30.9 ms** for native parsing, effect binding and authenticated
+output decryption. The matching output decrypted; wrong amounts and recipient
+keys were rejected, and the receipt omitted the scratch Merkle index. Its
+finality envelope was fabricated and its proofs were **invalid placeholders**.
+It demonstrates the verifier's local work, not proof validity or chain
+acceptance. [Measured receipt verification](evidence/browser-receipt-verification.json).
+
+`npm run test:browser` passed **72 tests**, with zero failures or skips. The suite
 additionally covers account/network changes, proving
 mode confirmation, substituted signed transactions, native serialization,
 checkpoint ordering and encrypted recovery. Its wallet responses and some
-IndexedDB events are controlled doubles; see the current counts in the
+IndexedDB events are controlled doubles. The full `npm test` run passed **171
+tests**; the static build and all **59** checked web links also passed. See the
 [verification record](verification.md).
 
 The existing [public Preview payment](evidence/preview-payment.json) and
 [owner/retry evidence](evidence/preview-runner.json) were produced by the Node
 runner and local prover. They remain valid for that execution. They do not
 establish that the new browser/Lace path has completed a real payment. Live Lace
-approvals, its internal DUST proving, full browser settlement and actual browser
+connection has subsequently been reported by the user; that report does not
+establish a payment. Transaction approvals, internal DUST proving, full browser settlement and actual browser
 termination recovery must be measured separately. See the
 [verification record](verification.md) for the previous network results.
 

@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { BrowserRunnerStore, BrowserRequestJournal } from '../packages/browser-demo/stores.mjs';
-import { BrowserDemoService, createInitialState, PREVIEW } from '../packages/browser-demo/service.mjs';
+import { BrowserDemoService, createInitialState, PREVIEW, merchantReceiptTotals, paymentReceiptExpectation } from '../packages/browser-demo/service.mjs';
 import { createMerchantObserver } from '../packages/browser-demo/observer.mjs';
+import { createMerchantReceiptVerifier } from '../packages/browser-demo/receipt-verifier.mjs';
 import { createRunnerState, PaymentRunner } from '../services/runner/payment-runner.mjs';
-import { requestFingerprint } from '../packages/protocol/index.mjs';
+import { requestFingerprint, scopeKey } from '../packages/protocol/index.mjs';
 
 const copy = value => structuredClone(value);
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -145,19 +146,56 @@ test('request journal reserves one idempotent payment, keeps scopes isolated and
   assert.equal((await journal.get(scope, id)).status, 'finalized'); await journal.close();
 });
 
-test('actual shielded SDK observer snapshot round-trips and rejects another recipient identity without network start', async () => {
+test('legacy SDK snapshot preserves the exact recipient identity used by targeted receipt verification', async () => {
   const seed = new Uint8Array(32).fill(31);
   const observer = await createMerchantObserver({ seed, network: PREVIEW });
+  const verifier = createMerchantReceiptVerifier({ seed, network: 'preview' });
   let restored;
   try {
     assert.match(observer.getCoinPublicKey(), /^[0-9a-f]{64}$/);
+    assert.equal(verifier.getCoinPublicKey(), observer.getCoinPublicKey());
+    assert.equal(verifier.getEncryptionPublicKey(), observer.getEncryptionPublicKey());
     assert.equal(observer.summary().synced, false);
     assert.equal(Object.hasOwn(observer, 'balanceTx'), false); assert.equal(Object.hasOwn(observer, 'submitTx'), false);
     const saved = await observer.serialize();
     restored = await createMerchantObserver({ seed, network: PREVIEW, saved });
     assert.equal(restored.getCoinPublicKey(), observer.getCoinPublicKey());
     await assert.rejects(createMerchantObserver({ seed: new Uint8Array(32).fill(32), network: PREVIEW, saved }), /another identity/);
-  } finally { await restored?.stop(); await observer.stop(); }
+  } finally { verifier.close(); await restored?.stop(); await observer.stop(); }
+});
+
+test('recipient receipt amount is bound to the saved request and exact candidate spending delta', () => {
+  const tokenId = 'ab'.repeat(32);
+  const prior = { privateState: { state: { spent: 10n } } };
+  const pending = { request: { amount: '40', tokenId, recipientRef: 'demo-merchant' }, candidate: { privateState: { state: { spent: 50n } } } };
+  assert.equal(paymentReceiptExpectation(pending, prior, tokenId), 40n);
+  for (const mutate of [value => { value.request.amount = '50'; }, value => { value.request.tokenId = 'cd'.repeat(32); },
+    value => { value.request.recipientRef = 'another-merchant'; }, value => { value.candidate.privateState.state.spent = 51n; }]) {
+    const changed = copy(pending); mutate(changed); assert.throws(() => paymentReceiptExpectation(changed, prior, tokenId));
+  }
+});
+
+test('legacy merchant totals require matching terminal receipts and journal requests, never a stored wallet balance', () => {
+  const saved = createInitialState({ accountId: account }); const tokenId = 'aa'.repeat(32);
+  const request = { vaultRef: 'demo-vault', recipientRef: 'demo-merchant', tokenId, amount: '40', idempotencyKey: 'receipt-migration-0001' };
+  const fingerprint = requestFingerprint(request); const scoped = scopeKey(scope); const transactionId = '00' + 'ee'.repeat(32);
+  saved.setup = { funded: true, vaultAddress: context.contractAddress, tokenColor: tokenId };
+  saved.runner = { confirmed: { privateState: { state: { spent: 40n } } }, payments: [{ paymentId: 'payment-1', scope: scoped,
+    idempotencyKey: request.idempotencyKey, fingerprint, status: 'finalized', transactionId,
+    settlementEvidence: { network: 'preview', contractAddress: context.contractAddress, transactionId, finalizedBlockHash: 'ff'.repeat(32),
+      recipientReceiptVerified: true, vaultChangeVerified: true } }] };
+  saved.journal.records = [{ paymentId: 'payment-1', scope: scoped, idempotencyKey: request.idempotencyKey, fingerprint, request, status: 'submitted' }];
+  // A crash between terminal runner commit and journal status update is safe:
+  // the request is immutable and the runner's terminal evidence is authoritative.
+  saved.merchantSnapshot = 'opaque-legacy-full-wallet-state';
+  assert.deepEqual(merchantReceiptTotals(saved), { verifiedReceivedAtomic: '40', verifiedPaymentCount: 1, receiptHistoryComplete: true });
+  const before = copy(saved);
+  for (const mutate of [value => { value.journal.records = []; }, value => { value.journal.records[0].request.amount = '41'; },
+    value => { value.runner.confirmed.privateState.state.spent = 41n; }, value => { value.runner.payments.push(copy(value.runner.payments[0])); },
+    value => { value.runner.payments[0].settlementEvidence.recipientReceiptVerified = false; }]) {
+    const changed = copy(saved); mutate(changed); assert.equal(merchantReceiptTotals(changed).verifiedReceivedAtomic, null);
+  }
+  assert.deepEqual(saved, before);
 });
 
 function serviceFixture() {
@@ -170,6 +208,66 @@ function serviceFixture() {
   return { connection, store: memoryRoot(), prover: { proveTx() { throw new Error('must not prove'); }, close() {} },
     assetBase: 'https://wallet.example/browser-contracts/', changeAccount() { changed = true; } };
 }
+
+test('receipt-verifier setup retains the exact existing identity and opaque legacy history without replay', async () => {
+  const previousLocation = globalThis.location, previousFetch = globalThis.fetch;
+  globalThis.location = new URL('https://wallet.example/testnet/');
+  const calls = []; let service;
+  globalThis.fetch = async (url, options) => {
+    calls.push(String(url)); assert.equal(String(url), PREVIEW.node);
+    assert.equal(JSON.parse(options.body).method, 'system_chain');
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: 'Midnight Preview' }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const fixture = serviceFixture();
+    await fixture.store.update(state => {
+      state.merchantSnapshot = 'opaque-existing-SDK-snapshot-do-not-replay-or-replace';
+      state.uncertain = { kind: 'deploy-token', phase: 'submitting', signed: new Uint8Array([1, 2, 3]), transactionIds: ['00' + 'ee'.repeat(32)] };
+      state.journal.records = [{ paymentId: 'saved-request', status: 'requested' }];
+    });
+    const before = fixture.store.snapshot(); service = await BrowserDemoService.create(fixture);
+    await service.setup(); const status = await service.status();
+    assert.equal(status.merchant.ready, true); assert.equal(status.merchant.verificationMode, 'finalized-output-decryption');
+    assert.equal(Object.hasOwn(status.merchant, 'synced'), false); assert.equal(Object.hasOwn(status.merchant, 'balanceAtomic'), false);
+    assert.equal(status.capabilities.canBootstrap, false); assert.equal(status.phase, 'unresolved');
+    assert.deepEqual(calls, [PREVIEW.node]); assert.deepEqual(fixture.store.snapshot(), before);
+    await service.close(); assert.deepEqual(fixture.store.snapshot(), before);
+  } finally {
+    await service?.close(); globalThis.fetch = previousFetch;
+    if (previousLocation === undefined) delete globalThis.location; else globalThis.location = previousLocation;
+  }
+});
+
+test('already-funded pending browser sessions reopen the runner without replacing candidate or replaying merchant history', async () => {
+  const previousLocation = globalThis.location, previousFetch = globalThis.fetch;
+  globalThis.location = new URL('https://wallet.example/testnet/'); let service;
+  const urls = [];
+  globalThis.fetch = async url => {
+    urls.push(String(url)); assert.equal(String(url), PREVIEW.node);
+    return new Response(JSON.stringify({ result: 'Midnight Preview' }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const fixture = serviceFixture();
+    await fixture.store.update(state => {
+      const envelope = { privateState: { ownerSecret: new Uint8Array(32), agentSecret: state.agentSecret, coinIndex: 7n,
+        state: { spent: 0n, hasCoin: true, coin: { value: 100n } } } };
+      state.setup = { funded: true, vaultAddress: context.contractAddress, tokenColor: 'aa'.repeat(32), runnerInitialized: true, confirmedEnvelope: envelope };
+      state.runnerContext = { network: 'preview', contractAddress: context.contractAddress, vaultId: Buffer.from(state.vaultId).toString('hex') };
+      state.runner = createRunnerState(envelope);
+      state.runner.pending = { phase: 'submitted', signedBytes: new Uint8Array([4, 5, 6]), transactionIds: ['00' + 'ee'.repeat(32)],
+        candidate: { privateState: { coinIndex: null, state: { spent: 40n } } }, request: { amount: '40' } };
+      state.merchantSnapshot = 'preserved-legacy-observer-snapshot';
+      state.journal.records = [{ paymentId: 'retained-payment', status: 'submitted' }];
+    });
+    const before = fixture.store.snapshot(); service = await BrowserDemoService.create(fixture);
+    await service.setup(); const status = await service.status();
+    assert.equal(status.merchant.ready, true); assert.equal(status.capabilities.canPay, false); assert.equal(status.capabilities.canReconcile, true);
+    assert.deepEqual(urls, [PREVIEW.node]); assert.deepEqual(fixture.store.snapshot(), before);
+  } finally {
+    await service?.close(); globalThis.fetch = previousFetch;
+    if (previousLocation === undefined) delete globalThis.location; else globalThis.location = previousLocation;
+  }
+});
 
 test('browser service rejects wrong encrypted account context and foreign asset origins before work', async () => {
   const previous = globalThis.location; globalThis.location = new URL('https://wallet.example/testnet/');

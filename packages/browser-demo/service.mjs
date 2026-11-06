@@ -16,11 +16,11 @@ import { verifyPreviewNetwork } from '../../services/runner/test-network-config.
 import { createRunnerState, PaymentRunner } from '../../services/runner/payment-runner.mjs';
 import { createMidnightSdkAdapter } from '../../services/runner/midnight-sdk-adapter.mjs';
 import { PaymentGateway } from '../../services/mcp/gateway.mjs';
-import { publicError, receipt, settlementEvidence, WalletError } from '../protocol/index.mjs';
-import { bounded, chainTime, qualifyCoin, verifyCoinMembership, waitBalance } from '../../services/demo/network.mjs';
+import { publicError, receipt, settlementEvidence, requestFingerprint, scopeKey, WalletError } from '../protocol/index.mjs';
+import { bounded, chainTime, qualifyCoin, verifyCoinMembership } from '../../services/demo/network.mjs';
 import { createKeyMaterialProvider } from '../browser-prover/materials.mjs';
 import { BrowserRunnerStore, BrowserRequestJournal } from './stores.mjs';
-import { createMerchantObserver } from './observer.mjs';
+import { createMerchantReceiptVerifier } from './receipt-verifier.mjs';
 
 export const PREVIEW = Object.freeze({ networkId: 'preview', node: 'https://rpc.preview.midnight.network', nodeWS: 'wss://rpc.preview.midnight.network',
   indexer: 'https://indexer.preview.midnight.network/api/v4/graphql', indexerWS: 'wss://indexer.preview.midnight.network/api/v4/graphql/ws',
@@ -51,6 +51,47 @@ const encryptionKeys = (wallet) => new Map([[wallet.getCoinPublicKey(), wallet.g
 export const DEMO_AMOUNTS = Object.freeze({ funded: 100000000700n, allowance: 70000000490n, perPayment: 50000000350n });
 const envelope = (privateState, ledger) => ({ privateState, stateCommitment: ledger.stateCommitment, policyCommitment: ledger.policyCommitment,
   version: ledger.version, paused: ledger.paused, revoked: ledger.revoked });
+
+/** Historical verified payments only, never a claim about the merchant's wallet
+ * balance. Legacy receipts are counted only when their preserved request,
+ * fingerprint, scope and evidence agree with the confirmed cumulative spend. */
+export function merchantReceiptTotals(saved) {
+  const unknown = { verifiedReceivedAtomic: null, verifiedPaymentCount: 0, receiptHistoryComplete: false };
+  try {
+    const payments = saved.runner?.payments ?? [];
+    const spent = saved.runner?.confirmed?.privateState?.state?.spent
+      ?? saved.setup.confirmedEnvelope?.privateState?.state?.spent ?? saved.setup.vaultPrivate?.state?.spent ?? 0n;
+    if (!Array.isArray(payments) || typeof spent !== 'bigint' || spent < 0n || spent > (1n << 64n) - 1n) return unknown;
+    const scope = { subject: 'demo-owner', network: 'preview', contractAddress: saved.setup.vaultAddress, vaultRef: 'demo-vault', agentRef: 'demo-agent' };
+    let total = 0n, count = 0; const ids = new Set(); const transactions = new Set();
+    for (const record of payments.filter(item => item.status === 'finalized')) {
+      if (record.scope !== scopeKey(scope) || ids.has(record.paymentId) || transactions.has(record.transactionId)) return unknown;
+      const matches = saved.journal.records.filter(item => item.paymentId === record.paymentId && item.scope === record.scope);
+      if (matches.length !== 1) return unknown;
+      const journal = matches[0]; const request = journal.request;
+      if (journal.idempotencyKey !== record.idempotencyKey || journal.fingerprint !== record.fingerprint
+        || requestFingerprint(request) !== record.fingerprint || request.recipientRef !== 'demo-merchant'
+        || request.vaultRef !== 'demo-vault' || request.tokenId !== saved.setup.tokenColor) return unknown;
+      const checked = receipt(record); settlementEvidence(record.settlementEvidence, scope, checked.transactionId);
+      ids.add(record.paymentId); transactions.add(record.transactionId); total += BigInt(request.amount); count++;
+    }
+    if (total !== spent) return unknown;
+    return { verifiedReceivedAtomic: total.toString(), verifiedPaymentCount: count, receiptHistoryComplete: true };
+  } catch { return unknown; }
+}
+
+export function paymentReceiptExpectation(pending, confirmed, tokenId) {
+  const previous = confirmed?.privateState?.state?.spent;
+  const next = pending?.candidate?.privateState?.state?.spent;
+  const amount = pending?.request?.amount;
+  if (pending?.request?.tokenId !== tokenId || pending.request.recipientRef !== 'demo-merchant'
+    || typeof amount !== 'string' || !/^[1-9][0-9]{0,19}$/.test(amount)
+    || typeof previous !== 'bigint' || typeof next !== 'bigint' || previous < 0n || next > (1n << 64n) - 1n
+    || BigInt(amount) > (1n << 64n) - 1n || next - previous !== BigInt(amount)) {
+    throw new Error('Pending recipient amount differs from captured private candidate');
+  }
+  return BigInt(amount);
+}
 function compiled(name, module, supplied, assetBase) {
   return CompiledContract.make(name, module.Contract).pipe(CompiledContract.withWitnesses(supplied ?? {}),
     CompiledContract.withCompiledFileAssets(new URL(name + '/', assetBase).href));
@@ -58,7 +99,7 @@ function compiled(name, module, supplied, assetBase) {
 
 export class BrowserDemoService {
   #vault; #network = PREVIEW; #owner; #merchant; #public; #providers; #compiled; #connection; #prover; #onStage; #ownerStatus; #closed = false; #closing = false; #closePromise; #active;
-  #runnerStore; #runner; #gateway; #journal; #scope; #job = null; #error = null; #phase = 'wallet-not-started'; #timer; #funding; #proofs = 0; #setupComplete = false;
+  #runnerStore; #runner; #gateway; #journal; #scope; #job = null; #error = null; #phase = 'wallet-not-started'; #funding; #proofs = 0; #setupComplete = false;
   static async create({ connection, store, prover, assetBase, assetHashes = {}, onStage = () => {} }) {
     if (!connection?.assertSession || !connection?.getShieldedBalance || !prover?.proveTx || !store?.update) throw new Error('Complete browser providers required');
     await connection.assertSession();
@@ -95,7 +136,7 @@ export class BrowserDemoService {
     this.#ownerStatus = await this.#connection.getPublicStatus();
     const saved = this.#vault.snapshot();
     const wallet = { ...this.#ownerStatus, synced: this.#ownerStatus?.connected === true, nightAtomic: null };
-    const current = this.#runnerStore?.snapshot();
+    const current = this.#runnerStore?.snapshot() ?? saved.runner;
     const ps = current?.confirmed.privateState ?? saved.setup.vaultPrivate;
     const ledger = current?.confirmed;
     const busy = this.#job?.status === 'running';
@@ -110,11 +151,10 @@ export class BrowserDemoService {
       policy: { allowanceAtomic: DEMO_AMOUNTS.allowance.toString(), perPaymentAtomic: DEMO_AMOUNTS.perPayment.toString(),
         spentAtomic: (ps?.state.spent ?? 0n).toString(), balanceAtomic: (ps?.state.coin.value ?? 0n).toString(),
         paused: ledger?.paused ?? !funded, revoked: ledger?.revoked ?? false },
-      merchant: { balanceAtomic: (this.#merchant?.current()?.shielded.balances[saved.setup.tokenColor] ?? 0n).toString(),
-        synced: this.#merchant?.summary().synced ?? false, syncProgress: this.#merchant?.summary().syncProgress ?? null },
+      merchant: { ready: this.#setupComplete && !!this.#merchant, verificationMode: 'finalized-output-decryption', ...merchantReceiptTotals(saved) },
       capabilities: { canSetup: !busy && !this.#setupComplete, canRegisterDust: false,
-        canBootstrap: !busy && this.#setupComplete && this.#merchant?.summary().synced === true && wallet.canTransact === true && BigInt(wallet.dustAtomic ?? '0') > 0n && !funded && !blocked,
-        canPay: !busy && wallet.canTransact === true && this.#merchant?.summary().synced === true && !!this.#runner?.canSubmit && !!ps?.state.hasCoin && !ledger?.paused && !ledger?.revoked && !blocked,
+        canBootstrap: !busy && this.#setupComplete && !!this.#merchant && wallet.canTransact === true && BigInt(wallet.dustAtomic ?? '0') > 0n && !funded && !blocked,
+        canPay: !busy && wallet.canTransact === true && this.#setupComplete && !!this.#merchant && !!this.#runner?.canSubmit && !!ps?.state.hasCoin && !ledger?.paused && !ledger?.revoked && !blocked,
         canPause: !busy && wallet.canTransact === true && ownerReady && !ledger?.revoked, canRevoke: !busy && wallet.canTransact === true && ownerReady && !ledger?.revoked,
         canWithdraw: !busy && wallet.canTransact === true && ownerReady && !!ps?.state.hasCoin,
         canReconcile: !busy && this.#setupComplete && (blocked || requiresVerification) && !!this.#owner },
@@ -138,19 +178,13 @@ export class BrowserDemoService {
     if (!this.#merchant) {
       this.#stage('checking-preview-network'); await verifyPreviewNetwork(this.#network);
       const saved = this.#vault.snapshot();
-      this.#merchant = await createMerchantObserver({ seed: saved.merchantSeed, network: this.#network, saved: saved.merchantSnapshot });
-      await this.#merchant.start();
-      this.#timer = setInterval(() => this.#saveWallets().catch(() => {}), 30_000);
+      this.#stage('preparing-recipient-verification');
+      this.#merchant = createMerchantReceiptVerifier({ seed: saved.merchantSeed, network: this.#network.networkId });
+      // Keep legacy merchantSnapshot untouched inside the encrypted root. It is
+      // not replayed, converted to a fabricated cursor, or replaced by a seed.
     }
-    this.#phase = 'syncing'; this.#stage('syncing-recipient-history');
-    await this.#merchant.waitSynced(); await this.#saveWallets();
     if (this.#vault.snapshot().setup.funded) await this.#openRunner();
-    this.#setupComplete = true; this.#phase = this.#runner ? 'ready' : 'awaiting-test-dust';
-  }
-  async #saveWallets() {
-    if (!this.#merchant) return;
-    const snapshot = await this.#merchant.serialize();
-    await this.#vault.update(state => { state.merchantSnapshot = snapshot; });
+    this.#setupComplete = true; this.#phase = this.#runner ? 'ready' : 'recipient-ready';
   }
   async #ownerBalance(color) { await this.#assertSession(); return this.#connection.getShieldedBalance(color); }
   async #waitOwnerBalance(color, expected, ms = 180_000) {
@@ -224,7 +258,6 @@ export class BrowserDemoService {
       state.uncertain = null;
     });
     if (pending.kind.startsWith('owner-') && this.#runner) await this.#runner.initialize();
-    await this.#saveWallets();
   }
   async #prepareCall(contract, address, circuitId, args, privateState, mappings) {
     const provider = this.#providers[contract]; const chain = await getPublicStates(this.#public, address);
@@ -238,7 +271,7 @@ export class BrowserDemoService {
   async bootstrap() {
     await this.#assertSession(true);
     const owner = await this.#connection.getPublicStatus();
-    if (!this.#setupComplete || !this.#merchant?.summary().synced || BigInt(owner.dustAtomic) <= 0n) throw new WalletError('PAYMENT_UNAVAILABLE');
+    if (!this.#setupComplete || !this.#merchant || BigInt(owner.dustAtomic) <= 0n) throw new WalletError('PAYMENT_UNAVAILABLE');
     await verifyPreviewNetwork(this.#network);
     let saved = this.#vault.snapshot();
     if (!saved.setup.tokenAddress) await this.#execute('deploy-token', async () => {
@@ -327,12 +360,18 @@ export class BrowserDemoService {
         const ps = confirmed.privateState;
         return !ps.state.hasCoin || verifyCoinMembership(current[0], ps.state.coin, ps.coinIndex, address);
       },
-      observeTransaction: async ({ pending }) => {
+      observeTransaction: async ({ pending, confirmed }) => {
         if (!pending.transactionId) return { outcome: 'unresolved' };
         finalized = await this.#watch(pending.transactionId);
         if (finalized.status !== 'SucceedEntirely' || !pending.transactionIds.includes(finalized.txId)) return { outcome: 'unresolved' };
         const ps = pending.candidate.privateState;
-        await waitBalance(this.#merchant, saved.setup.tokenColor, ps.state.spent);
+        this.#stage('verifying-recipient-output');
+        const amount = paymentReceiptExpectation(pending, confirmed, saved.setup.tokenColor);
+        const merchantReceipt = await this.#merchant.verifyReceipt({ finalized, expectedAsset: saved.setup.tokenColor, expectedAmount: amount,
+          contractAddress: address, expectedTransactionIds: pending.transactionIds });
+        if (merchantReceipt?.recipientReceiptVerified !== true || merchantReceipt.transactionId !== finalized.txId
+          || merchantReceipt.blockHash !== finalized.blockHash || merchantReceipt.tokenId !== saved.setup.tokenColor
+          || merchantReceipt.amountAtomic !== amount.toString()) throw new Error('Missing exact decrypted recipient receipt');
         if (ps.state.coin.value !== DEMO_AMOUNTS.funded - ps.state.spent) throw new Error('Unexpected vault change');
         const coinIndex = ps.state.hasCoin ? await qualifyCoin(this.#network, finalized, ps.state.coin, address) : null;
         return { outcome: 'finalized', transactionId: finalized.txId, confirmed: { ...pending.candidate, privateState: { ...ps, coinIndex } },
@@ -375,7 +414,6 @@ export class BrowserDemoService {
       if (record.settlementEvidence) publicRecord.blockHash = record.settlementEvidence.finalizedBlockHash;
       if (existing < 0) state.transactions.push(publicRecord); else state.transactions[existing] = publicRecord;
     });
-    await this.#saveWallets();
   }
   async owner(action, body = {}) {
     await this.#assertSession(true);
@@ -416,12 +454,12 @@ export class BrowserDemoService {
     this.#closePromise = (async () => {
       // Let an existing operation finish its durable checkpoint. Never erase an
       // uncertain outcome or cancel after a send merely because the UI locks.
-      await this.#active; clearInterval(this.#timer);
+      await this.#active;
       let failed = false;
-      try { await this.#saveWallets(); } catch { failed = true; }
       this.#closed = true;
-      const results = await Promise.allSettled([this.#merchant?.stop(), this.#journal?.close(), this.#runnerStore?.close()]);
+      const results = await Promise.allSettled([this.#journal?.close(), this.#runnerStore?.close()]);
       failed ||= results.some(result => result.status === 'rejected');
+      try { this.#merchant?.close(); } catch { failed = true; }
       try { this.#prover.close?.(); } catch { failed = true; }
       try { this.#connection.close(); } catch { failed = true; }
       try { await this.#vault.close(); } catch { failed = true; }

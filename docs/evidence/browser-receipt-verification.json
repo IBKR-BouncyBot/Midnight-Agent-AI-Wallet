@@ -1,0 +1,16 @@
+{
+  "observedAt": "2026-11-06",
+  "environment": "Codex in-app Chromium browser on Windows",
+  "format": "synthetic-browser-merchant-receipt-probe-v1",
+  "synthetic": true,
+  "proofValidity": "INVALID_PLACEHOLDER",
+  "chainAcceptance": false,
+  "historyEventsDownloaded": 0,
+  "keyDerivationMs": 0.7,
+  "verificationMs": 30.9,
+  "matchingOutputDecrypted": true,
+  "wrongAmountRejected": true,
+  "wrongRecipientRejected": true,
+  "receiptExcludesMerkleIndex": true,
+  "verificationBoundary": "Native parsing, effect binding and authenticated recipient decryption only; fabricated finality and invalid placeholder proofs. No network or wallet connection."
+}
