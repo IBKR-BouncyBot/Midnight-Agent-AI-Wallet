@@ -359,8 +359,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
       await uiStep('dismiss-restored-network-sheet', () => wallet.getByTestId('network-selection-sheet-cancel-button').click());
     if (await visible(wallet.getByTestId('midnight-settings-sheet-header'))) {
       await uiStep('normalize-restored-wasm-setting', async () => {
-        await wallet.getByTestId('proof-server-in-process-radio').click();
-        await wallet.getByTestId('save-configuration-button').click();
+        await wallet.goto(`chrome-extension://${EXTENSION_ID}/expo/index.html`);
         await wallet.getByTestId('midnight-settings-sheet-header').waitFor({ state:'hidden' });
       });
     }
@@ -393,8 +392,12 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     report.provingSetting = { label: 'Run in this app (WASM)', selectedInRealUi: true, persistedOnReopen: true };
     metadata.bootstrapProgress.wasmSelected = true; await persist();
     await uiStep('close-verified-wasm-settings', async () => {
-      await wallet.getByTestId('save-configuration-button').click();
+      // The persisted selection was just observed. Saving an unchanged value
+      // can leave Lace's sheet open; normal navigation closes this read-only
+      // inspection without another settings mutation or transaction action.
+      await wallet.goto(`chrome-extension://${EXTENSION_ID}/expo/index.html`);
       await wallet.getByTestId('midnight-settings-sheet-header').waitFor({ state: 'hidden' });
+      await wallet.getByTestId('settings-tab-btn').waitFor({ state:'visible' });
     }); await save();
   }
   try {
