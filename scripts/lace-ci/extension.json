@@ -1,0 +1,20 @@
+{
+  "schema": "lace-official-extension-pin-v1",
+  "version": "2.5.1",
+  "extensionId": "gafhhkghbfjjkeiendhlofajokpaflmk",
+  "storeUrl": "https://chromewebstore.google.com/detail/lace/gafhhkghbfjjkeiendhlofajokpaflmk",
+  "downloadUrl": "https://clients2.googleusercontent.com/crx/blobs/ARGaeZJvlxpcN3ECyBgUJa8TnoUypqBAsOc7-rRgDCnNBYMbKSxTuqpFVMkDg8P3uvwAXRG0Y6dKcRHoV6f22TxQ8buyNXI5h2wtmDTwUiSHSbPMcCRigW_iTq2O2qY-yfdzAMZSmuUol1hMbea4qymlsDR0ETzkRqvS5A/GAFHHKGHBFJJKEIENDHLOFAJOKPAFLMK_2_5_1_0.crx",
+  "allowedDownloadOrigins": ["https://clients2.googleusercontent.com", "https://clients2.google.com"],
+  "crxBytes": 73665394,
+  "crxSha256": "bff973f7c741ccdbf91c4a1125d4d6da8e9a0b2384b6b1f51c6898b24c87e055",
+  "archiveSha256": "aa6d59550362a3bbcbef343dffd783621150a7971307116bb11fe0d94b754708",
+  "publisherKeySha256": "61f7f2a6bfcf74cd0bc1fe2497cc9b04254c658f79f2145392867ea8366367cf",
+  "verifiedAt": "2026-11-06T19:20:07.316Z",
+  "updateMetadataUrl": "https://clients2.google.com/service/update2/crx?response=updatecheck&prodversion=148.0.0.0&acceptformat=crx3&x=id%3Dgafhhkghbfjjkeiendhlofajokpaflmk%26v%3D0.0.0.0%26uc",
+  "sources": [
+    "https://github.com/input-output-hk/lace/blob/bec4d25a0ea75cc4fcd0dae36d63d4dfa8fb122d/README.md",
+    "https://raw.githubusercontent.com/chromium/chromium/main/components/crx_file/crx3.proto",
+    "https://raw.githubusercontent.com/chromium/chromium/main/components/crx_file/crx_verifier.cc"
+  ],
+  "sourceBoundary": "Official signed Chrome Web Store 2.5.1 package. At verification time the public GitHub mirror still exposed only source release 2.5.0; no claim of source/build equivalence is made."
+}

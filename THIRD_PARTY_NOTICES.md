@@ -1,5 +1,7 @@
 # Third-party material
 
+Project-owned material is licensed under [PolyForm Noncommercial 1.0.0](LICENSE). This does not replace or restrict licenses already granted by third-party authors. The exact license text is reproduced unmodified from the [official PolyForm Project distribution](https://github.com/polyformproject/polyform-licenses/blob/1.0.0/PolyForm-Noncommercial-1.0.0.md), and a browser-downloadable copy is retained in `web/licenses/PolyForm-Noncommercial-1.0.0.txt`.
+
 The upstream smoke contract and any attributed network helpers are adapted from [midnightntwrk/midnight-examples](https://github.com/midnightntwrk/midnight-examples/tree/c2f2fe2d4e4fd2008894430cb469d4759d66efe3), copyright Midnight Foundation, Apache License 2.0. The full license is in `licenses/Apache-2.0.txt`. Original notices are retained in adapted helpers.
 
 The browser's public key-material mapping follows `@midnight-ntwrk/wallet-sdk-prover-client` 1.2.3. That Midnight Wallet SDK code is copyright Midnight Foundation and carries Apache-2.0 notices; the license is also distributed at `web/licenses/Apache-2.0.txt`. Browser bundles retain upstream legal comments. Other bundled dependencies and WASM modules retain their respective upstream notices and licenses.
@@ -12,4 +14,4 @@ The unmodified Outfit variable fonts in `web/fonts/` are copyright 2021 The Outf
 
 The front-page support section adapts Ballot Lab's support markup from that same revision. `web/support.mjs` and `web/assets/support-ada-qr.svg` are unmodified copies under its PolyForm Noncommercial 1.0.0 license. The public Cardano mainnet receiving address is preserved exactly, separately from testnet funding.
 
-Dependencies retain their respective upstream licenses. No license choice for the new wallet source is inferred from the handover.
+Dependencies retain their respective upstream licenses and copyright notices.

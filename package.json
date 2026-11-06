@@ -2,6 +2,7 @@
   "name": "midnight-agent-ai-wallet",
   "version": "0.2.0",
   "private": true,
+  "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "description": "Confidential agent vault with browser and public Preview demos",
   "engines": {
@@ -60,6 +61,7 @@
     "buffer": "6.0.3",
     "esbuild": "0.25.12",
     "events": "3.3.0",
+    "playwright": "1.64.1",
     "process": "0.11.10",
     "util": "0.12.5"
   }

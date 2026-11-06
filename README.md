@@ -1,6 +1,12 @@
 # Midnight Agent AI Wallet
 
-A confidential, contract-controlled allowance for an AI agent on Midnight. The agent proposes a payment through a provider-neutral API; Compact checks authority, recipient, asset, expiry, per-payment limit and cumulative allowance before moving the vault's shielded coins.
+[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
+
+## About
+
+An experimental AI agent vault on Midnight with private spending limits and owner recovery controls. Compact checks each payment's authority, recipient, asset, expiry and allowance before moving shielded funds.
+
+[Open the demos](https://ibkr-bouncybot.github.io/Midnight-Agent-AI-Wallet/): explore a browser policy simulation, or try the real Preview flow with Lace and browser WASM proving. This is noncommercial research using test assets. A complete Lace-approved payment remains unverified; [the verification record](docs/verification.md) distinguishes proven components from completed network tests.
 
 ![How Midnight Agent AI Wallet works: the owner sets private limits, the agent requests a payment, and the vault checks the rules before a verified network receipt.](docs/images/wallet-explainer.svg)
 
@@ -80,7 +86,11 @@ In the browser flow, contract witnesses are handled by the page's local WASM wor
 - [Implementation plan](docs/implementation-plan.md)
 - [Dependency review](docs/dependencies.md)
 
-See [third-party notices](THIRD_PARTY_NOTICES.md) for upstream licenses.
+## Noncommercial license
+
+You can study, modify and share the project for noncommercial purposes under [PolyForm Noncommercial 1.0.0](LICENSE), the same license used by Midnight Ballot Lab. Commercial use requires separate permission from the relevant rights holders. This applies to project-owned material; [third-party components retain their own licenses](THIRD_PARTY_NOTICES.md), including Ballot Lab assets, Midnight code and Outfit fonts.
+
+The [published license and notices page](https://ibkr-bouncybot.github.io/Midnight-Agent-AI-Wallet/license.html) includes a downloadable copy of the exact terms.
 
 ## Buy me a coffee
 

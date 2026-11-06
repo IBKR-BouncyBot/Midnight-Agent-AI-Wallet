@@ -50,6 +50,8 @@ Useful source files at the pinned revision:
 
 The reference repository uses [PolyForm Noncommercial 1.0.0](https://github.com/IBKR-BouncyBot/Midnight-BallotLab/blob/d22ce6171b5548f70b8360f12709562e9e8051fa/LICENSE); do not relabel copied application code as permissively licensed. Outfit is separately licensed under the SIL Open Font License, with `OFL-Outfit.txt` beside `Outfit-Latin.woff2` and `Outfit-LatinExt.woff2`. No source assets were copied during the initial inspection.
 
+The wallet's project-owned material uses the same [PolyForm Noncommercial 1.0.0 license](../LICENSE). Ballot Lab's attribution, Midnight's imported-code notices and Outfit's separate font license remain in [the third-party notices](../THIRD_PARTY_NOTICES.md).
+
 The subsequent user-requested frontend now vendors the four shared CSS files above, unmodified, and the Outfit fonts in `web/`. Their PolyForm and OFL notices are retained alongside the assets and recorded in `THIRD_PARTY_NOTICES.md`. `web/wallet.css` and the wallet interactions are separate. A fresh fetch on 6 November 2026 confirmed the same reference revision. The wallet has a two-choice landing page, an explicitly simulated browser flow and a public Preview interface backed by an authenticated local runner. Ballot Lab itself uses direct Lace browser providers; the wallet uses a local runner to retain its encrypted durable state and recovery boundary.
 
 The reference repository's own `AGENTS.md` was read as context, not as instructions for the wallet repository. In particular, the reference's election-specific security rules and deployment choices do not establish wallet behavior or authorization.

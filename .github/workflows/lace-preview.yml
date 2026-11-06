@@ -1,0 +1,96 @@
+name: Real Lace Preview acceptance
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Create an isolated wallet or exercise its existing Preview session
+        type: choice
+        options: [bootstrap, exercise]
+        required: true
+        default: bootstrap
+      state_run_id:
+        description: Exact earlier run containing the encrypted test profile (required for exercise)
+        type: string
+        default: ''
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: lace-preview-acceptance
+  cancel-in-progress: false
+jobs:
+  real-lace:
+    if: github.ref == 'refs/heads/codex/private-vault-feasibility'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      LACE_TEST_MODE: ${{ inputs.mode }}
+      LACE_STATE_RUN: ${{ inputs.state_run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: npm
+      - name: Validate isolated run inputs
+        shell: bash
+        env:
+          LACE_CI_STATE_KEY: ${{ secrets.LACE_CI_STATE_KEY }}
+        run: |
+          set -eu
+          test -n "$LACE_CI_STATE_KEY"
+          if [ "$LACE_TEST_MODE" = bootstrap ]; then
+            test -z "$LACE_STATE_RUN"
+          else
+            [[ "$LACE_STATE_RUN" =~ ^[0-9]+$ ]]
+          fi
+          mkdir -p "$RUNNER_TEMP/lace-ci/incoming" "$RUNNER_TEMP/lace-ci/public" "$RUNNER_TEMP/lace-ci/sealed"
+      - run: npm ci --ignore-scripts
+      - name: Check package verification and encrypted-state boundaries
+        run: node --test tests/lace-ci-state.test.mjs tests/lace-extension-package.test.mjs scripts/lace-ci/browser-run.test.mjs
+      - name: Install pinned Chromium test runtime
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Acquire and authenticate official Lace 2.5.1
+        run: |
+          node scripts/lace-ci/verify-extension.mjs --out "$RUNNER_TEMP/lace-ci/package"
+          cp "$RUNNER_TEMP/lace-ci/package/verification.json" "$RUNNER_TEMP/lace-ci/public/lace-package.json"
+      - name: Download exact prior encrypted state
+        if: inputs.mode == 'exercise'
+        uses: actions/download-artifact@v4
+        with:
+          name: lace-ci-state
+          path: ${{ runner.temp }}/lace-ci/incoming
+          run-id: ${{ inputs.state_run_id }}
+          github-token: ${{ github.token }}
+      - name: Restore authenticated test profile
+        if: inputs.mode == 'exercise'
+        env:
+          LACE_CI_STATE_KEY: ${{ secrets.LACE_CI_STATE_KEY }}
+        run: node scripts/lace-ci/state.mjs restore --state-dir "$RUNNER_TEMP/lace-ci/state" --archive "$RUNNER_TEMP/lace-ci/incoming/profile.enc" --wallet-version 2.5.1
+      - name: Run actual extension and application UI
+        id: browser
+        run: node scripts/lace-ci/browser-run.mjs --mode "$LACE_TEST_MODE" --extension-dir "$RUNNER_TEMP/lace-ci/package/extension" --state-dir "$RUNNER_TEMP/lace-ci/state" --evidence-dir "$RUNNER_TEMP/lace-ci/public" --app-url https://ibkr-bouncybot.github.io/Midnight-Agent-AI-Wallet/testnet.html
+      - name: Seal closed test profile
+        if: always() && (steps.browser.outcome == 'success' || steps.browser.outcome == 'failure')
+        id: seal
+        env:
+          LACE_CI_STATE_KEY: ${{ secrets.LACE_CI_STATE_KEY }}
+        run: node scripts/lace-ci/state.mjs seal --state-dir "$RUNNER_TEMP/lace-ci/state" --archive "$RUNNER_TEMP/lace-ci/sealed/profile.enc" --wallet-version 2.5.1
+      - name: Preserve encrypted state only
+        if: always() && steps.seal.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: lace-ci-state
+          path: ${{ runner.temp }}/lace-ci/sealed/profile.enc
+          retention-days: 30
+          if-no-files-found: error
+      - name: Publish bounded public evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lace-ci-evidence
+          path: ${{ runner.temp }}/lace-ci/public/*.json
+          retention-days: 30
+          if-no-files-found: ignore
