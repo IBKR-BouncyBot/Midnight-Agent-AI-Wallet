@@ -1,0 +1,12 @@
+{
+  "inspection": "Independent read-only indexer retrieval after successful baseline vault run",
+  "network": "undeployed",
+  "txId": "00bcefcb70a1af84b8185d15cd27f1eef3c8adce54095a5f7077ac1acac83d7224",
+  "status": "SucceedEntirely",
+  "contractAddress": "47b89d9b524980b0161c62f9edd84a4b8f71f85b6e19eaaa09f2dfa0a4ad246d",
+  "blockHash": "076266d1b709ead4e582d41eda21f0d98e5062da15d30ff3d6beb7b84106a6f2",
+  "blockHeight": 98,
+  "contractProofBytes": 4508,
+  "phase": "fallible",
+  "assertion": "pay call exists and call.proof.serialize() returns nonempty bytes"
+}

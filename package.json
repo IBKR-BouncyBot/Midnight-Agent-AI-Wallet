@@ -1,0 +1,46 @@
+{
+  "name": "midnight-agent-ai-wallet",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local testnet feasibility work for a confidential agent payment vault",
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
+  "scripts": {
+    "compile": "node scripts/compile.mjs",
+    "compile:fast": "node scripts/compile.mjs --skip-zk",
+    "test": "node --test tests/*.test.mjs",
+    "test:unit": "node --test tests/protocol.test.mjs tests/private-store.test.mjs tests/runner.test.mjs",
+    "test:native": "node --test tests/native-*.test.mjs",
+    "test:network": "node tests/network/private-vault.mjs",
+    "test:network:durable": "node tests/network/durable-vault.mjs",
+    "mcp:inspect": "node services/mcp/stdio.mjs",
+    "agent:scripted": "node services/mcp/scripted-agent.mjs"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.16.0",
+    "@midnight-ntwrk/midnight-js-contracts": "4.1.1",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-level-private-state-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-network-id": "4.1.1",
+    "@midnight-ntwrk/midnight-js-node-zk-config-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-protocol": "4.1.1",
+    "@midnight-ntwrk/midnight-js-types": "4.1.1",
+    "@midnight-ntwrk/midnight-js-utils": "4.1.1",
+    "@midnight-ntwrk/testkit-js": "4.1.1",
+    "@midnight-ntwrk/wallet-sdk": "1.2.0",
+    "bn.js": "5.2.5",
+    "pino": "9.14.0",
+    "rxjs": "7.8.2",
+    "ws": "8.22.1"
+  },
+  "overrides": {
+    "@midnight-ntwrk/compact-runtime": "0.16.0",
+    "@midnight-ntwrk/onchain-runtime-v3": "3.0.0",
+    "@midnight-ntwrk/wallet-sdk": "1.2.0",
+    "@midnight-ntwrk/ledger-v8": "8.1.2",
+    "@midnight-ntwrk/zkir-v2": "2.1.1"
+  }
+}

@@ -1,0 +1,10 @@
+// Smoke-test contract adapted from midnightntwrk/midnight-examples,
+// commit c2f2fe2d4e4fd2008894430cb469d4759d66efe3 (Apache-2.0).
+// Copyright Midnight Foundation. See THIRD_PARTY_NOTICES.md.
+pragma language_version 0.23;
+
+export ledger message: Opaque<"string">;
+
+export circuit storeMessage(newMessage: Opaque<"string">): [] {
+  message = disclose(newMessage);
+}

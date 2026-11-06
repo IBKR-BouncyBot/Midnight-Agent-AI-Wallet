@@ -1,0 +1,56 @@
+name: Local wallet checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      network:
+        description: Run the disposable local proof and settlement tests
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  protocol-and-storage:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run test:unit
+      - run: node services/mcp/scripted-agent.mjs
+  native-runtime:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: bash scripts/install-compiler.sh
+      - run: npm run compile:fast
+      - run: npm run test:native
+  local-proof-and-settlement:
+    if: github.event_name == 'workflow_dispatch' && inputs.network
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: bash scripts/install-compiler.sh
+      - run: npm run compile
+      - run: docker compose up -d --wait
+      - run: node tests/network/upstream-smoke.mjs
+      - run: node tests/network/private-vault.mjs
+      - run: node tests/network/durable-vault.mjs
+      - if: always()
+        run: docker compose down
+

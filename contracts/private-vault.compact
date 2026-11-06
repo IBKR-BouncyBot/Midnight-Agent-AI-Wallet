@@ -1,0 +1,247 @@
+// Private single-agent vault, ledger 8 / Compact 0.31.1.
+// A test milestone: one lifetime funding coin; four approved recipient slots.
+// No coin opening, policy, amount, or accumulated spend is stored in the ledger.
+pragma language_version 0.23;
+import CompactStandardLibrary;
+
+export struct Policy {
+  agentKey: Bytes<32>;
+  asset: Bytes<32>;
+  recipients: Vector<4, Bytes<32>>;
+  perPayment: Uint<64>;
+  allowance: Uint<64>;
+  expiresAt: Uint<64>;
+}
+
+export struct SpendingState {
+  coin: ShieldedCoinInfo;
+  hasCoin: Boolean;
+  spent: Uint<64>;
+  sequence: Uint<64>;
+}
+
+export struct PaymentRequest {
+  network: Bytes<32>;
+  vault: Bytes<32>;
+  deployedContract: Bytes<32>;
+  expectedVersion: Uint<64>;
+  requestId: Bytes<32>;
+  asset: Bytes<32>;
+  recipient: Bytes<32>;
+  amount: Uint<64>;
+  validFrom: Uint<64>;
+  validUntil: Uint<64>;
+}
+
+struct PolicyPreimage {
+  purpose: Bytes<32>;
+  network: Bytes<32>;
+  vault: Bytes<32>;
+  deployedContract: Bytes<32>;
+  policy: Policy;
+}
+struct StatePreimage {
+  purpose: Bytes<32>;
+  network: Bytes<32>;
+  vault: Bytes<32>;
+  deployedContract: Bytes<32>;
+  state: SpendingState;
+}
+
+export sealed ledger network: Bytes<32>;
+export sealed ledger vaultId: Bytes<32>;
+export sealed ledger owner: Bytes<32>;
+export ledger initialized: Boolean;
+export ledger funded: Boolean;
+export ledger paused: Boolean;
+export ledger revoked: Boolean;
+export ledger version: Uint<64>;
+export ledger policyCommitment: Bytes<32>;
+export ledger stateCommitment: Bytes<32>;
+// Domain-separated hashes of random request IDs, never payment contents.
+export ledger usedRequests: Set<Bytes<32>>;
+
+witness ownerSecret(): Bytes<32>;
+witness agentSecret(): Bytes<32>;
+witness privatePolicy(): Policy;
+witness policySalt(): Bytes<32>;
+witness privateState(): SpendingState;
+witness stateSalt(): Bytes<32>;
+witness nextStateSalt(): Bytes<32>;
+// Merkle position is assigned at settlement. It is excluded from our commitment;
+// the Zswap input proof separately authenticates the coin's tree membership.
+witness coinIndex(): Uint<64>;
+witness rememberState(state: SpendingState, salt: Bytes<32>): [];
+witness rememberPolicy(policy: Policy, salt: Bytes<32>): [];
+
+constructor(networkId: Bytes<32>, id: Bytes<32>) {
+  assert(networkId != default<Bytes<32>> && id != default<Bytes<32>>, "Invalid deployment scope");
+  network = disclose(networkId);
+  vaultId = disclose(id);
+  assert(ownerSecret() != default<Bytes<32>>, "Invalid owner secret");
+  owner = disclose(authorityKey(pad(32, "agent-vault:owner:v1"), networkId, id, ownerSecret()));
+  initialized = false;
+  funded = false;
+  paused = true;
+  revoked = false;
+  version = 0;
+}
+
+// Fresh per-deployment vault ID avoids a constructor/address circularity.
+// Contract-address binding is additionally enforced in state, policy and requests.
+export pure circuit authorityKey(role: Bytes<32>, net: Bytes<32>, id: Bytes<32>, secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<4, Bytes<32>>>([role, net, id, secret]);
+}
+
+circuit requireOwner(): [] {
+  assert(authorityKey(pad(32, "agent-vault:owner:v1"), network, vaultId, ownerSecret()) == owner, "Owner authorization required");
+}
+circuit commitPolicy(policy: Policy, salt: Bytes<32>): Bytes<32> {
+  return persistentCommit<PolicyPreimage>(PolicyPreimage {
+    purpose: pad(32, "agent-vault:policy:v1"), network: network,
+    vault: vaultId, deployedContract: kernel.self().bytes, policy: policy
+  }, salt);
+}
+circuit commitState(state: SpendingState, salt: Bytes<32>): Bytes<32> {
+  return persistentCommit<StatePreimage>(StatePreimage {
+    purpose: pad(32, "agent-vault:state:v1"), network: network,
+    vault: vaultId, deployedContract: kernel.self().bytes, state: state
+  }, salt);
+}
+circuit readPolicy(): Policy {
+  assert(initialized, "Policy not initialized");
+  const policy = privatePolicy();
+  assert(commitPolicy(policy, policySalt()) == policyCommitment, "Invalid policy opening");
+  return policy;
+}
+circuit readState(): SpendingState {
+  const state = privateState();
+  assert(commitState(state, stateSalt()) == stateCommitment, "Invalid or stale state opening");
+  return state;
+}
+circuit validatePolicy(policy: Policy, salt: Bytes<32>): [] {
+  assert(salt != default<Bytes<32>>, "Invalid policy randomness");
+  assert(policy.agentKey != default<Bytes<32>>, "Invalid agent key");
+  assert(policy.perPayment > 0 && policy.perPayment <= policy.allowance, "Invalid allowance");
+  assert(policy.expiresAt > 0, "Invalid expiry");
+  assert(policy.recipients[0] != default<Bytes<32>>, "Recipient required");
+}
+circuit nextVersion(): [] {
+  assert(version < 18446744073709551615, "Version exhausted");
+  version = (version + 1) as Uint<64>;
+}
+circuit saveState(state: SpendingState): [] {
+  const salt = nextStateSalt();
+  assert(salt != default<Bytes<32>> && salt != stateSalt(), "Fresh state randomness required");
+  stateCommitment = commitState(state, salt);
+  rememberState(state, salt);
+}
+circuit qualified(state: SpendingState): QualifiedShieldedCoinInfo {
+  return QualifiedShieldedCoinInfo {
+    nonce: state.coin.nonce, color: state.coin.color,
+    value: state.coin.value, mt_index: coinIndex()
+  };
+}
+
+export circuit initializePolicy(): [] {
+  requireOwner();
+  assert(!initialized, "Already initialized");
+  const policy = privatePolicy();
+  validatePolicy(policy, policySalt());
+  assert(stateSalt() != default<Bytes<32>>, "Invalid state randomness");
+  const state = default<SpendingState>;
+  policyCommitment = commitPolicy(policy, policySalt());
+  stateCommitment = commitState(state, stateSalt());
+  rememberState(state, stateSalt());
+  initialized = true;
+  paused = false;
+  nextVersion();
+}
+
+export circuit fund(coin: ShieldedCoinInfo): [] {
+  requireOwner();
+  assert(!funded && !revoked, "Vault already funded or revoked");
+  const policy = readPolicy();
+  const state = readState();
+  assert(coin.color == policy.asset, "Asset mismatch");
+  assert(coin.value > 0 && coin.value <= 18446744073709551615, "Invalid funding amount");
+  receiveShielded(disclose(coin));
+  saveState(SpendingState { coin: coin, hasCoin: true, spent: state.spent, sequence: 1 });
+  funded = true;
+}
+
+export circuit pay(request: PaymentRequest): [] {
+  assert(initialized && funded && !paused && !revoked, "Vault unavailable");
+  assert(request.network == network, "Deployment scope mismatch");
+  assert(request.vault == vaultId, "Deployment scope mismatch");
+  assert(request.deployedContract == kernel.self().bytes, "Deployment scope mismatch");
+  assert(disclose(request.expectedVersion) == version, "Stale policy version");
+  assert(request.requestId != default<Bytes<32>>, "Request ID required");
+  const id = disclose(persistentHash<Vector<5, Bytes<32>>>([
+    pad(32, "agent-vault:request:v1"), network, vaultId, kernel.self().bytes, request.requestId
+  ]));
+  assert(!usedRequests.member(id), "Request already used");
+  const policy = readPolicy();
+  assert(agentSecret() != default<Bytes<32>>, "Agent authorization required");
+  assert(authorityKey(pad(32, "agent-vault:agent:v1"), network, vaultId, agentSecret()) == policy.agentKey, "Agent authorization required");
+  assert(request.asset == policy.asset, "Asset mismatch");
+  assert(request.recipient != default<Bytes<32>>, "Recipient not approved");
+  assert(request.recipient == policy.recipients[0] || request.recipient == policy.recipients[1] || request.recipient == policy.recipients[2] || request.recipient == policy.recipients[3], "Recipient not approved");
+  assert(request.amount > 0 && request.amount <= policy.perPayment, "Payment not permitted");
+  assert(request.validFrom < request.validUntil && request.validUntil <= policy.expiresAt, "Invalid validity period");
+  // Only the request's validity window is public, not the policy's expiry.
+  assert(blockTimeGte(disclose(request.validFrom)) && blockTimeLt(disclose(request.validUntil)), "Request outside validity period");
+  const state = readState();
+  assert(state.hasCoin && state.coin.color == policy.asset, "Vault has no spendable coin");
+  assert(state.spent <= policy.allowance && request.amount <= policy.allowance - state.spent, "Payment not permitted");
+  assert(request.amount <= state.coin.value, "Insufficient vault funds");
+  assert(state.sequence < 18446744073709551615, "Sequence exhausted");
+  const result = sendShielded(disclose(qualified(state)), left<ZswapCoinPublicKey, ContractAddress>(disclose(ZswapCoinPublicKey { bytes: request.recipient })), disclose(request.amount) as Uint<128>);
+  saveState(SpendingState {
+    coin: result.change.value, hasCoin: result.change.is_some,
+    spent: (state.spent + request.amount) as Uint<64>, sequence: (state.sequence + 1) as Uint<64>
+  });
+  usedRequests.insert(id);
+}
+
+export circuit replacePolicy(policy: Policy, salt: Bytes<32>): [] {
+  requireOwner();
+  assert(!revoked, "Revocation is permanent");
+  const old = readPolicy();
+  const state = readState();
+  validatePolicy(policy, salt);
+  assert(salt != policySalt(), "Fresh policy randomness required");
+  assert(policy.asset == old.asset, "Asset cannot change");
+  assert(policy.allowance >= state.spent, "Allowance below spent total");
+  policyCommitment = commitPolicy(policy, salt);
+  rememberPolicy(policy, salt);
+  nextVersion();
+}
+
+export circuit setPaused(value: Boolean): [] {
+  requireOwner();
+  assert(initialized && !revoked, "Vault unavailable");
+  paused = disclose(value);
+  nextVersion();
+}
+
+export circuit revoke(): [] {
+  requireOwner();
+  assert(!revoked, "Already revoked");
+  revoked = true;
+  paused = true;
+  nextVersion();
+}
+
+export circuit withdraw(recipient: Bytes<32>): [] {
+  requireOwner();
+  assert(initialized && funded, "Vault unavailable");
+  assert(recipient != default<Bytes<32>>, "Invalid withdrawal recipient");
+  const state = readState();
+  assert(state.hasCoin, "Vault has no spendable coin");
+  assert(state.sequence < 18446744073709551615, "Sequence exhausted");
+  sendShielded(disclose(qualified(state)), left<ZswapCoinPublicKey, ContractAddress>(disclose(ZswapCoinPublicKey { bytes: recipient })), disclose(state.coin.value));
+  saveState(SpendingState { coin: default<ShieldedCoinInfo>, hasCoin: false, spent: state.spent, sequence: (state.sequence + 1) as Uint<64> });
+  nextVersion();
+}
+

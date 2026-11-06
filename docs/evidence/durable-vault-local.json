@@ -1,0 +1,129 @@
+{
+  "name": "durable-vault",
+  "network": "undeployed",
+  "startedAt": "2026-11-06T15:12:36.213Z",
+  "finishedAt": "2026-11-06T15:15:32.060Z",
+  "success": true,
+  "realProofProviderCompletions": 8,
+  "transactions": [
+    {
+      "label": "test-token-deploy",
+      "txId": "00d9feaaceda7245d925d6778640a83e77b49e316d98f8b6947de205310757bd15",
+      "status": "SucceedEntirely",
+      "blockHeight": 164,
+      "contractAddress": "7ce0f619e5ccfd1b734a10c1bd594e2092a19d4f4350f7b9de1451c1667af9b2"
+    },
+    {
+      "label": "test-token-mint-public-amount",
+      "txId": "00fb438cdb622d70eba2edd7e6142ff0d1356a1d4b95510a60449ce3ea44b24947",
+      "status": "SucceedEntirely",
+      "blockHeight": 167
+    },
+    {
+      "label": "private-vault-deploy",
+      "txId": "00f8db5a6d32b8718268e1c1ae9beb3164c7fc918b0453f26864b444888e4090c4",
+      "status": "SucceedEntirely",
+      "blockHeight": 170,
+      "contractAddress": "8a0b502b8c0fe2467563b1761a45494e39dd7a3613c6c313e8d2565438ca22b3"
+    },
+    {
+      "label": "disable-vault-maintenance",
+      "txId": "007d01b59481ebc302dd712d2f0d1d4e4379ceb10979490bc02c80b797e5b3eeaf",
+      "status": "SucceedEntirely",
+      "blockHeight": 173
+    },
+    {
+      "label": "initialize-private-policy",
+      "txId": "003aedbdefe7eb236c250fd3d2e5ba09fd5015d5fc89f3c8484b49482231d43b67",
+      "status": "SucceedEntirely",
+      "blockHeight": 177
+    },
+    {
+      "label": "fund-private-vault",
+      "txId": "00aac16950e2eb81e0b840fd5dc031841d2f9d8eb3fb9be1128d3dc8e8e4a3e6b0",
+      "status": "SucceedEntirely",
+      "blockHeight": 181
+    },
+    {
+      "label": "agent-payment",
+      "txId": "0048b39197c561107b1fda7afc34556cafa1243439ba08f9f8f64953fcab45c35a",
+      "status": "SucceedEntirely",
+      "blockHeight": 186
+    },
+    {
+      "label": "owner-withdraw-remaining-change",
+      "txId": "00367136e16e89db26115f1cff8f7d060b382cb3eec8f96560a653958263db2ed1",
+      "status": "SucceedEntirely",
+      "blockHeight": 190
+    }
+  ],
+  "checks": [
+    "Before funding, finalized maintenance removal independently verified empty committee and impossible threshold1",
+    "Impossible coin index rejected by real ledger spend-proof construction against indexed chain; no proof/submission and commitment unchanged",
+    "Merchant wallet independently observed the exact payment amount; private change and spend accounting match",
+    "A second equal payment exceeds remaining allowance and is rejected by generated contract pre-proof; chain commitment and recipient balance unchanged",
+    "Replayed request rejected; encrypted provider reconstruction retained coin openings and accounting",
+    "Exact public ledger fields, serialized payment/state and same-phase public transcript inspected for private openings, keys and numeric amount encodings",
+    "Disclosure remains: network/vault identifiers, owner commitment, flags/version, policy/state commitments, request nullifiers, calls, timing; test mint amount is public",
+    "Owner withdrawal finalized; owner change plus merchant payment equals funded amount, with no reusable vault coin"
+  ],
+  "testAmounts": {
+    "fundedAtomic": "100000000700",
+    "paymentAtomic": "40000000280",
+    "changeAtomic": "60000000420",
+    "allowanceAtomic": "70000000490",
+    "ceilingAtomic": "50000000350"
+  },
+  "privacy": {
+    "inspectedContractCalls": 1,
+    "phase": "fallible",
+    "segment": 39526,
+    "contractProofBytes": 4508,
+    "contractInputs": 1,
+    "recipientOutputs": 1,
+    "contractChangeOutputs": 1,
+    "sampledSecretValuesAbsent": 11,
+    "amountEncodingsAbsent": [
+      "payment",
+      "allowance",
+      "per-payment ceiling",
+      "spent total"
+    ],
+    "inspectedSurfaces": [
+      "serialized transaction",
+      "serialized contract state",
+      "fallible public transcript"
+    ],
+    "limitation": "Literal encoding checks do not establish absence of inference or timing disclosures"
+  },
+  "durable": {
+    "submittedOnce": true,
+    "simulatedLostSubmissionResponse": true,
+    "reopenedEncryptedStore": true,
+    "finalizedByRealChainObservation": true,
+    "repeatReturnedOriginalReceipt": true,
+    "counts": {
+      "prepare": 1,
+      "prove": 1,
+      "submit": 1,
+      "observe": 1
+    },
+    "persistedSignedDigest": "c64def952b1eea760b6649a61767f07ad7f4fca526bf06fadbcc407941ca46e6",
+    "transactionId": "0048b39197c561107b1fda7afc34556cafa1243439ba08f9f8f64953fcab45c35a",
+    "finalizedBlockHash": "b453b46bd75fad39bc40bf242bea4db8b49452200a24ae69dd650d4facbc0408",
+    "limitation": "Store close/reopen and injected lost response; no OS process kill or power-loss test"
+  },
+  "sourceHashes": {
+    "contracts/private-vault.compact": "81ee40325fb6cfd6493a19107d86d12d05b5f4f311a8d0b25acccff4afdaf726",
+    "contracts/managed/private-vault/contract/index.js": "9fbdfcf08d6f581050fc5ee43e045a5fbc317628717b48ea54d0c12b9406ac98",
+    "contracts/managed/private-vault/keys/pay.verifier": "85591f3af1d3a246cf19aae4e0b626e3beab970aa1ac99c81486c822cbde39c0",
+    "services/runner/payment-runner.mjs": "b1befe80049b9e97895082e9302b9ac032b977cdedbeb56e577707bd1407c488",
+    "services/runner/midnight-sdk-adapter.mjs": "eb5cd044271aa912df644813f6294b9b0763d16de66ef96a9260f38530e9c393",
+    "services/runner/private-store.mjs": "af77fa701032df57c283aca87029cad12bfc124a0e1f991e945bb348d8c9938f",
+    "services/runner/disable-maintenance.mjs": "dcb64cce37473cb769ec85baffc321b4f3edcc3003e9593843d11f0a2da9ac40",
+    "tests/network/harness.mjs": "15abf9c17a68a3e90096a47691076b86059fd8e748bfecf3878978c48dd96443",
+    "tests/network/private-vault.mjs": "79af39c8700d2759e1f4f70f59e6f3f4e1a1f8f767e303c5bb24c0f2fd388ab9",
+    "tests/network/durable-payment.mjs": "f93024fe56f606d673468af189c27390a6b351fdd84b983131252202f01bad4b",
+    "tests/network/privacy.mjs": "c8c1dc91fe056c2953154701c77768e4d1dcdd98c0de8a26a4a0bf7910f31b71"
+  }
+}

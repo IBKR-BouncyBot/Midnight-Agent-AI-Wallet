@@ -1,0 +1,11 @@
+node_modules/
+.tools/
+.local/
+.env
+.env.*
+!.env.example
+contracts/managed/
+coverage/
+*.log
+*.tsbuildinfo
+

@@ -1,0 +1,26 @@
+{
+  "name": "upstream-smoke",
+  "network": "undeployed",
+  "startedAt": "2026-11-06T14:56:44.110Z",
+  "finishedAt": "2026-11-06T14:57:19.712Z",
+  "success": true,
+  "realProofProviderCompletions": 2,
+  "transactions": [
+    {
+      "label": "upstream-deploy",
+      "txId": "00478f9d21e471be62aa9c23c5e319994c8d7bb2d32f43ea0c7a27e771d965eae6",
+      "status": "SucceedEntirely",
+      "blockHeight": 5,
+      "contractAddress": "8299c2bd2bff58118c50857714c447458add60ad964b1ca525e56a7c38d69ca1"
+    },
+    {
+      "label": "upstream-store-message",
+      "txId": "00c6797b291d5c12e5a39add186e3a259612e3d7ee6c753fd0f39c4bc716a57c82",
+      "status": "SucceedEntirely",
+      "blockHeight": 8
+    }
+  ],
+  "checks": [
+    "Unchanged upstream generated contract deployed and storeMessage independently queried from indexer"
+  ]
+}
